@@ -103,12 +103,7 @@ class SecDownloader:
                             cik=ticker, 
                             company_name=ticker, 
                             filing_type=filing_type,
-                            "Business": [
-                    r"Item\s*1[\.\-–:]?\s*Business",
-                    r"ITEM\s*1[\.\-–:]?\s*BUSINESS",
-                    r"Business\s+Description",
-                ],
-            accession_number=accession_number,
+                            accession_number=accession_number,
                             s3_path="", 
                             content_hash="PENDING_" + accession_number 
                         )
