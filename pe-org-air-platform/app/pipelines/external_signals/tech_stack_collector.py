@@ -6,10 +6,9 @@ import random
 import re
 from typing import List, Dict, Any, Set
 from playwright.async_api import async_playwright
-from playwright_stealth import stealth_async
 from datetime import datetime
 from difflib import SequenceMatcher
-from .utils import WebUtils
+from .utils import WebUtils, apply_stealth
 from app.models.signals import CollectorResult, SignalCategory, SignalEvidenceItem
 
 logger = logging.getLogger(__name__)
@@ -83,7 +82,7 @@ class TechStackCollector:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
-            await stealth_async(page)
+            await apply_stealth(page)
             
             try:
                 # BuiltWith Scan
