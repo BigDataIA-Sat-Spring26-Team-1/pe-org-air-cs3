@@ -4,6 +4,7 @@ from .market_analyzer import PositionFactorCalculator
 from .talent_analyzer import TalentConcentrationCalculator
 from .calculators import VRCalculator, HRCalculator, SynergyCalculator, ConfidenceCalculator
 from .rubric_scorer import RubricScorer, ScoreLevel, RubricResult
+from . import utils
 
 __all__ = [
     "EvidenceMapper", 
@@ -16,5 +17,6 @@ __all__ = [
     "ConfidenceCalculator",
     "RubricScorer",
     "ScoreLevel",
-    "RubricResult"
+    "RubricResult",
+    "utils"
 ]

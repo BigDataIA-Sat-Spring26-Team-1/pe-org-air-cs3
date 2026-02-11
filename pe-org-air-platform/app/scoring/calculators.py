@@ -1,5 +1,6 @@
 from decimal import Decimal
 from typing import Dict
+from .utils import weighted_mean, clamp, to_decimal
 
 
 class VRCalculator:
@@ -28,13 +29,18 @@ class VRCalculator:
         Returns:
             V^R score (0-100)
         """
-        vr = Decimal("0")
+        values = []
+        weights = []
         
         for dim, weight in self.DIMENSION_WEIGHTS.items():
             score = dimension_scores.get(dim, Decimal("50.0"))
-            vr += score * weight
+            values.append(score)
+            weights.append(weight)
         
-        return round(vr, 2)
+        vr = weighted_mean(values, weights)
+        vr = clamp(vr, Decimal("0"), Decimal("100"))
+        
+        return to_decimal(float(vr), places=2)
 
 
 class HRCalculator:
@@ -59,13 +65,14 @@ class HRCalculator:
         
         Args:
             hr_base: Base horizontal readiness (typically 70.0)
-            position_factor: Market position factor (0.0 to 1.0)
+            position_factor: Market position factor (-1.0 to 1.0)
             
         Returns:
             H^R score (0-100)
         """
         hr = hr_base * (Decimal("1") + self.alpha * position_factor)
-        return round(hr, 2)
+        hr = clamp(hr, Decimal("0"), Decimal("100"))
+        return to_decimal(float(hr), places=2)
 
 
 class SynergyCalculator:
@@ -87,15 +94,16 @@ class SynergyCalculator:
             vr_score: Vertical Readiness (0-100)
             hr_score: Horizontal Readiness (0-100)
             alignment_factor: Strategic alignment (0.0-1.0, default 1.0)
-            timing_factor: Market timing (0.0-1.0, default 1.0)
+            timing_factor: Market timing (0.8-1.2, default 1.0)
             
         Returns:
             Synergy score (0-100)
         """
         base_synergy = (vr_score * hr_score) / Decimal("100")
         synergy = base_synergy * alignment_factor * timing_factor
+        synergy = clamp(synergy, Decimal("0"), Decimal("100"))
         
-        return round(synergy, 2)
+        return to_decimal(float(synergy), places=2)
 
 
 class ConfidenceCalculator:
@@ -117,7 +125,8 @@ class ConfidenceCalculator:
         if not dimension_confidences:
             return Decimal("0.0")
         
-        total = sum(dimension_confidences)
-        avg = total / len(dimension_confidences)
+        decimal_confs = [to_decimal(float(c), places=4) for c in dimension_confidences]
+        avg = sum(decimal_confs) / len(decimal_confs)
+        avg = clamp(avg, Decimal("0"), Decimal("1"))
         
-        return round(avg, 2)
+        return to_decimal(float(avg), places=2)
