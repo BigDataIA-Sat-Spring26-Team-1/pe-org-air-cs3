@@ -1,50 +1,67 @@
 from decimal import Decimal
+from typing import Dict
 
 
 class PositionFactorCalculator:
-    """Calculates market position factor based on market capitalization."""
+    """
+    Calculates position factor relative to sector peers.
     
-    THRESHOLDS = {
-        "mega_cap": Decimal("200_000_000_000"),      # $200B+
-        "large_cap": Decimal("10_000_000_000"),      # $10B-$200B
-        "mid_cap": Decimal("2_000_000_000"),         # $2B-$10B
-        "small_cap": Decimal("300_000_000"),         # $300M-$2B
+    Position Factor measures a company's position relative to sector peers:
+    - PF = +1.0: Clear industry leader (e.g., NVDA in semiconductors)
+    - PF = 0.0: Average position
+    - PF = -1.0: Industry laggard
+    
+    Formula from Lab 6:
+    PF = 0.6 × VR_component + 0.4 × MCap_component
+    
+    Where:
+    - VR_component = (vr_score - sector_avg_vr) / 50, clamped to [-1, 1]
+    - MCap_component = (market_cap_percentile - 0.5) × 2
+    """
+    
+    # Sector average V^R scores (from framework calibration data)
+    SECTOR_AVG_VR: Dict[str, float] = {
+        "technology": 65.0,
+        "financial_services": 55.0,
+        "healthcare": 52.0,
+        "business_services": 50.0,
+        "retail": 48.0,
+        "manufacturing": 45.0,
     }
 
-    def calculate_position_factor(self, market_cap_usd: Decimal) -> Decimal:
+    def calculate_position_factor(
+        self,
+        vr_score: float,
+        sector: str,
+        market_cap_percentile: float
+    ) -> Decimal:
         """
-        Calculate position factor (0.0 to 1.0) based on market cap.
+        Calculate position factor from V^R and market cap.
         
-        Mega Cap (>$200B): 0.90 + scaled bonus up to 1.0
-        Large Cap ($10B-$200B): 0.70-0.90 linear
-        Mid Cap ($2B-$10B): 0.50-0.70 linear
-        Small Cap ($300M-$2B): 0.30-0.50 linear
-        Emerging (<$300M): 0.0-0.30 linear
+        Args:
+            vr_score: Company's V^R score (0-100)
+            sector: Company sector (e.g., "technology", "financial_services")
+            market_cap_percentile: Position in sector by market cap (0-1)
+                                   0.0 = smallest, 1.0 = largest
+        
+        Returns:
+            Position factor in [-1, 1]
         """
-        if market_cap_usd >= self.THRESHOLDS["mega_cap"]:
-            # Mega cap: 0.90 base + up to 0.10 bonus
-            bonus = min(Decimal("1.0"), market_cap_usd / Decimal("3_000_000_000_000"))
-            return Decimal("0.90") + (bonus * Decimal("0.10"))
+        # Get sector average V^R
+        sector_avg = self.SECTOR_AVG_VR.get(sector.lower(), 50.0)
         
-        elif market_cap_usd >= self.THRESHOLDS["large_cap"]:
-            # Large cap: linear 0.70 to 0.90
-            range_size = self.THRESHOLDS["mega_cap"] - self.THRESHOLDS["large_cap"]
-            position = (market_cap_usd - self.THRESHOLDS["large_cap"]) / range_size
-            return Decimal("0.70") + (position * Decimal("0.20"))
+        # Calculate V^R component
+        vr_diff = vr_score - sector_avg
+        vr_component = vr_diff / 50.0
+        vr_component = max(-1.0, min(1.0, vr_component))
         
-        elif market_cap_usd >= self.THRESHOLDS["mid_cap"]:
-            # Mid cap: linear 0.50 to 0.70
-            range_size = self.THRESHOLDS["large_cap"] - self.THRESHOLDS["mid_cap"]
-            position = (market_cap_usd - self.THRESHOLDS["mid_cap"]) / range_size
-            return Decimal("0.50") + (position * Decimal("0.20"))
+        # Calculate market cap component
+        mcap_component = (market_cap_percentile - 0.5) * 2
         
-        elif market_cap_usd >= self.THRESHOLDS["small_cap"]:
-            # Small cap: linear 0.30 to 0.50
-            range_size = self.THRESHOLDS["mid_cap"] - self.THRESHOLDS["small_cap"]
-            position = (market_cap_usd - self.THRESHOLDS["small_cap"]) / range_size
-            return Decimal("0.30") + (position * Decimal("0.20"))
+        # Weighted combination
+        pf = 0.6 * vr_component + 0.4 * mcap_component
         
-        else:
-            # Emerging: linear 0.0 to 0.30
-            position = min(Decimal("1.0"), market_cap_usd / self.THRESHOLDS["small_cap"])
-            return position * Decimal("0.30")
+        # Bound to [-1, 1]
+        pf = max(-1.0, min(1.0, pf))
+        
+        return Decimal(str(round(pf, 2)))
