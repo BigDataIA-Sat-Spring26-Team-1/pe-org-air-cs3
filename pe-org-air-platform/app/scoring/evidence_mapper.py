@@ -11,7 +11,7 @@ from app.models.scoring import (
 # THE CRITICAL MAPPING TABLE
 SIGNAL_TO_DIMENSION_MAP: Dict[SignalSource, DimensionMapping] = {
 
-    # 1. TECHNOLOGY HIRING -> Talent(0.70), Tech(0.20), Culture(0.10)
+    # 1. TECHNOLOGY HIRING -> Talent(0.70), Tech(0.20), Culture(0.10), Data(0.10)
     SignalSource.TECHNOLOGY_HIRING: DimensionMapping(
         source=SignalSource.TECHNOLOGY_HIRING,
         primary_dimension=Dimension.TALENT,
@@ -19,6 +19,7 @@ SIGNAL_TO_DIMENSION_MAP: Dict[SignalSource, DimensionMapping] = {
         secondary_mappings={
             Dimension.TECHNOLOGY_STACK: Decimal("0.20"),
             Dimension.CULTURE: Decimal("0.10"),
+            Dimension.DATA_INFRASTRUCTURE: Decimal("0.10"),
         },
         reliability=Decimal("0.85"),
     ),
