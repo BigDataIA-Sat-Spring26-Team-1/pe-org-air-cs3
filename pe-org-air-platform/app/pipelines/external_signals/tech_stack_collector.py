@@ -6,9 +6,9 @@ import random
 import re
 from typing import List, Dict, Any, Set
 from playwright.async_api import async_playwright
-from playwright_stealth import stealth_async
 from datetime import datetime
-from .utils import WebUtils
+from difflib import SequenceMatcher
+from .utils import WebUtils, apply_stealth
 from app.models.signals import CollectorResult, SignalCategory, SignalEvidenceItem
 
 logger = logging.getLogger(__name__)
@@ -37,14 +37,18 @@ class TechStackCollector:
             try:
                 df = pd.read_csv(self.jobs_file)
                 if 'company' in df.columns:
-                    mask = df['company'].fillna('').str.contains(company.split()[0], case=False)
-                    if ticker:
-                        mask = mask | df['company'].fillna('').str.contains(ticker, case=False)
-                    company_jobs = df[mask]
+                    # Use a list to collect results
+                    matches = []
+                    for _, row in df.iterrows():
+                        listing_comp = str(row.get('company', '')).lower()
+                        # Use a simpler match for domain resolution
+                        if company.lower()[:5] in listing_comp or listing_comp in company.lower():
+                            matches.append(row)
                     
-                    if not company_jobs.empty:
-                        # Logic to extract URL from description if explicit url missing
-                        for desc in company_jobs['description'].dropna().head(10):
+                    if matches:
+                        for row in matches[:10]:
+                            desc = row.get('description', '')
+                            if pd.isna(desc): continue
                             urls = re.findall(r'(?:https?://)?(?:www\.)?([a-zA-Z0-9-]+\.[a-z]{2,})', str(desc))
                             for d in urls:
                                 if company.split()[0].lower() in d.lower():
@@ -78,7 +82,7 @@ class TechStackCollector:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
-            await stealth_async(page)
+            await apply_stealth(page)
             
             try:
                 # BuiltWith Scan
@@ -110,6 +114,32 @@ class TechStackCollector:
                 await browser.close()
         return found
 
+    def _is_matching_company(self, listing_company: str, target_company: str, ticker: str = None) -> bool:
+        """Robust check to ensure the job listing belongs to the target company."""
+        if not listing_company:
+            return False
+            
+        l_name = str(listing_company).lower().strip()
+        t_name = str(target_company).lower().strip()
+        
+        # 1. Exact or partial name match
+        if l_name in t_name or t_name in l_name:
+            return True
+            
+        # 2. Ticker match
+        if ticker and ticker.lower() in l_name.split():
+            return True
+            
+        # 3. Alphanumeric normalization match (CRITICAL for JPMorganChase)
+        l_norm = re.sub(r'[^a-z0-9]', '', l_name)
+        t_norm = re.sub(r'[^a-z0-9]', '', t_name)
+        if l_norm == t_norm or l_norm in t_norm or t_norm in l_norm:
+            return True
+
+        # 4. Sequence similarity ratio (Fuzzy match)
+        similarity = SequenceMatcher(None, l_name, t_name).ratio()
+        return similarity > 0.75
+
     def _analyze_job_mentions(self, company: str, ticker: str = None) -> List[Dict[str, str]]:
         """Harvest internal tech mentions from job descriptions."""
         found = []
@@ -117,17 +147,19 @@ class TechStackCollector:
             try:
                 df = pd.read_csv(self.jobs_file)
                 if 'company' in df.columns:
-                    mask = df['company'].fillna('').str.contains(company.split()[0], case=False)
-                    if ticker:
-                        mask = mask | df['company'].fillna('').str.contains(ticker, case=False)
-                    combined_text = " ".join(df[mask]['description'].fillna("").astype(str)).lower()
+                    # Filter matching jobs
+                    matching_jobs = df[df['company'].apply(lambda x: self._is_matching_company(x, company, ticker))]
                     
-                    seen = set()
-                    for cat, techs in self.TECH_INDICATORS.items():
-                        for tech in techs:
-                            if tech in combined_text and tech not in seen:
-                                found.append({"name": tech.upper(), "category": cat, "source": "job_descriptions"})
-                                seen.add(tech)
+                    if not matching_jobs.empty:
+                        combined_text = " ".join(matching_jobs['description'].fillna("").astype(str)).lower()
+                        
+                        seen = set()
+                        for cat, techs in self.TECH_INDICATORS.items():
+                            for tech in techs:
+                                # Use regex for precise tech marker detection
+                                if re.search(r'\b' + re.escape(tech) + r'\b', combined_text):
+                                    found.append({"name": tech.upper(), "category": cat, "source": "job_descriptions"})
+                                    seen.add(tech)
             except Exception as e:
                 logger.debug(f"Job tech analysis failed: {e}")
         return found

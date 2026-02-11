@@ -4,10 +4,29 @@ import logging
 import re
 from typing import Optional, List, Dict
 from playwright.async_api import async_playwright
-from playwright_stealth import stealth_async
+# Robust stealth import
+try:
+    from playwright_stealth import stealth_async as stealth_func
+except ImportError:
+    try:
+        from playwright_stealth import stealth as stealth_func
+    except ImportError:
+        stealth_func = None
 
 # Configure module-level logger
 logger = logging.getLogger(__name__)
+
+async def apply_stealth(page):
+    """Applies stealth to a playwright page, handling both sync and async versions."""
+    if not stealth_func:
+        return
+    try:
+        if asyncio.iscoroutinefunction(stealth_func):
+            await stealth_func(page)
+        else:
+            stealth_func(page)
+    except Exception as e:
+        logger.debug(f"Failed to apply stealth: {e}")
 
 class WebUtils:
     """Helper class for web operations and text cleaning."""
@@ -52,7 +71,7 @@ class WebUtils:
             )
             page = await context.new_page()
             
-            await stealth_async(page)
+            await apply_stealth(page)
             
             try:
                 await page.goto(url, wait_until="domcontentloaded", timeout=60000)
@@ -97,8 +116,8 @@ class WebUtils:
             context = await browser.new_context(user_agent=random.choice(WebUtils.USER_AGENTS))
             page = await context.new_page()
             
-            # Apply stealth to avoid bot detection on direct visits
-            await stealth_async(page)
+            # Apply stealth
+            await apply_stealth(page)
             
             try:
                 # We use a slightly more patient wait strategy

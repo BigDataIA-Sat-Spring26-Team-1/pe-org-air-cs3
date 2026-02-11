@@ -259,10 +259,17 @@ class SnowflakeService:
                 created_at
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'COMPLETED', CURRENT_TIMESTAMP())
         """
+        # Ensure 'meta' is retrieved correctly from doc_data
+        meta = doc_data['meta']
         params = (
             doc_data['doc_id'],
-            doc_data['doc_id'], doc_data['meta'].cik, doc_data['meta'].company_name, doc_data['meta'].filing_type,
-            doc_data['meta'].accession_number, doc_data['s3_key'], doc_data['content_hash']
+            doc_data['doc_id'], 
+            meta.cik, 
+            meta.company_name, 
+            meta.filing_type,
+            meta.accession_number, 
+            doc_data['s3_key'], 
+            doc_data['content_hash']
         )
         await self.execute(query, params)
 
