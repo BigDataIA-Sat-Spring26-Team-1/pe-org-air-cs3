@@ -119,23 +119,48 @@ class JobCollector:
         return False
 
     async def collect(self, company_name: str, days: int = 30, ticker: str = None) -> CollectorResult:
-        """Scrapes LinkedIn for jobs and analyzes them for AI signals."""
+        """Scrapes LinkedIn for jobs and analyzes them for AI signals with caching."""
         logger.info(f"Checking job postings for {company_name} (Ticker: {ticker})")
         search_query = WebUtils.clean_company_name(company_name)
         
-        try:
-            loop = asyncio.get_event_loop()
-            df = await loop.run_in_executor(None, lambda: scrape_jobs(
-                site_name=["linkedin"],
-                search_term=search_query,
-                location="USA",
-                results_wanted=50,
-                hours_old=days * 24,
-                linkedin_fetch_description=True
-            ))
-        except Exception as e:
-            logger.error(f"Hiring data collection failed: {str(e)}")
-            return self._empty_result(f"Scraper error: {str(e)}")
+        # Caching Logic
+        cache_dir = Path("data/raw")
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file = cache_dir / f"raw_jobs_{ticker or search_query.replace(' ', '_')}.csv"
+        
+        df = pd.DataFrame()
+        use_cache = False
+        
+        if cache_file.exists():
+            file_age = datetime.now().timestamp() - cache_file.stat().st_mtime
+            if file_age < 86400: # 24 hours
+                try:
+                    df = pd.read_csv(cache_file)
+                    if not df.empty:
+                        logger.info(f"Using cached job data for {company_name} ({len(df)} records)")
+                        use_cache = True
+                except Exception as e:
+                    logger.warning(f"Failed to read cache: {e}")
+
+        if not use_cache:
+            logger.info(f"No valid cache found. Starting fresh scrape for {search_query}...")
+            try:
+                loop = asyncio.get_event_loop()
+                df = await loop.run_in_executor(None, lambda: scrape_jobs(
+                    site_name=["linkedin"],
+                    search_term=search_query,
+                    location="USA",
+                    results_wanted=50,
+                    hours_old=days * 24,
+                    linkedin_fetch_description=True
+                ))
+                
+                if not df.empty:
+                    df.to_csv(cache_file, index=False)
+                    logger.info(f"Saved {len(df)} raw jobs to cache: {cache_file}")
+            except Exception as e:
+                logger.error(f"Hiring data collection failed: {str(e)}")
+                return self._empty_result(f"Scraper error: {str(e)}")
 
         if df.empty:
             return self._empty_result("No jobs found")
