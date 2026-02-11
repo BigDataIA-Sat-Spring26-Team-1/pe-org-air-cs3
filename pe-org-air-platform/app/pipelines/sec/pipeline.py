@@ -16,6 +16,7 @@ from app.models.registry import DocumentRegistry
 from app.services.s3_storage import AWSService
 from app.services.snowflake import db
 from app.services.redis_cache import cache
+from app.config import settings
 
 logger = structlog.get_logger()
 
@@ -26,150 +27,72 @@ def process_filing_worker(meta, download_dir: str, known_hashes: set = None):
     registry = DocumentRegistry(initial_hashes=known_hashes)
     parser = SecParser()
     chunker = SemanticChunker()
-    # Use local S3 client for process safety
     aws = AWSService()
-    
-    # We must re-create logger context if needed, but simplistic is fine.
     
     results_chunk = {"processed": 0, "skipped": 0, "errors": 0, "doc_data": None}
     
     try:
         local_path = (
-            Path(download_dir)
-            / "sec-edgar-filings"
-            / meta.cik
-            / meta.filing_type
-            / meta.accession_number
+            Path(download_dir) / "sec-edgar-filings" / meta.cik / meta.filing_type / meta.accession_number
         )
 
         file_candidates = list(local_path.glob("*.*"))
-        target_file = next(
-            (f for f in file_candidates if f.suffix.lower() in ['.html', '.pdf', '.txt']),
-            None
-        )
+        target_file = next((f for f in file_candidates if f.suffix.lower() in ['.html', '.pdf', '.txt']), None)
 
         if not target_file:
             return results_chunk
 
-        # 1. Upload Raw File
-        s3_raw_key = f"sec/{meta.cik}/{meta.filing_type}/{meta.accession_number}/{target_file.name}"
-        
+        # 1. Upload Raw File (Immediate)
+        s3_raw_key = f"{settings.AWS_FOLDER}/{meta.cik}/{meta.filing_type}/{meta.accession_number}/{target_file.name}"
         try:
             if not aws.file_exists(s3_raw_key):
                 aws.upload_file(str(target_file), s3_raw_key)
-        except Exception:
-            pass # creating race conditions or connection issues in process pool
+        except Exception: pass
 
-        # 2. Auto-generate PDF for HTML/TXT filings
-        if target_file.suffix.lower() in ['.html', '.htm', '.txt']:
-            try:
-                pdf_filename = target_file.stem + ".pdf"
-                local_pdf_path = target_file.parent / pdf_filename
-                s3_pdf_key = f"sec/{meta.cik}/{meta.filing_type}/{meta.accession_number}/{pdf_filename}"
-                
-                # 2. Extract & Auto-generate PDF
-                if target_file.suffix.lower() in ['.html', '.htm', '.txt']:
-                    temp_html_path = target_file.with_name(f"{target_file.stem}_clean.html")
-                    
-                    try:
-                        # Read content
-                        with open(target_file, 'r', encoding='utf-8', errors='ignore') as f:
-                            content = f.read()
-
-                        # Logic to extract HTML from full-submission.txt
-                        html_content = content
-                        if "<SEC-DOCUMENT>" in content or "<DOCUMENT>" in content:
-                            # Try to find the specific document type matching the filing
-                            # e.g. <TYPE>10-K...<TEXT>...
-                            ftype = re.escape(meta.filing_type)
-                            # Look for Document with matching TYPE, capture text inside <TEXT> tags
-                            pattern = re.compile(r'<DOCUMENT>.*?>\s*<TYPE>.*?' + ftype + r'.*?<TEXT>(.*?)</TEXT>', re.DOTALL | re.IGNORECASE)
-                            match = pattern.search(content)
-                            
-                            if match:
-                                html_content = match.group(1).strip()
-                            else:
-                                # Fallback: take the first <TEXT> block found (usually the main doc)
-                                match_any = re.search(r'<TEXT>(.*?)</TEXT>', content, re.DOTALL | re.IGNORECASE)
-                                if match_any:
-                                    html_content = match_any.group(1).strip()
-
-                        # Ensure valid HTML structure
-                        if "<html>" not in html_content.lower():
-                             # Wrap plain text in <pre>
-                             html_content = f"<html><body><pre>{html_content}</pre></body></html>"
-                        
-                        # Write clean HTML
-                        with open(temp_html_path, 'w', encoding='utf-8') as f:
-                            f.write(html_content)
-
-                        if not local_pdf_path.exists():
-                            logger.info("pdf_gen_start", file=target_file.name)
-                            # Convert CLEAN HTML
-                            pdfkit.from_file(str(temp_html_path), str(local_pdf_path), options={
-                                'quiet': '', 
-                                'enable-local-file-access': ''
-                            })
-                            logger.info("pdf_gen_success", file=target_file.name)
-                        
-                        # Upload if valid
-                        if local_pdf_path.exists():
-                            if local_pdf_path.stat().st_size > 1024:
-                                 aws.upload_file(str(local_pdf_path), s3_pdf_key)
-                            else:
-                                 logger.warning("pdf_gen_empty_file", file=target_file.name)
-                                 local_pdf_path.unlink()
-
-                        # Cleanup
-                        if temp_html_path.exists():
-                            temp_html_path.unlink()
-
-                    except Exception as e:
-                        logger.warning("pdf_gen_failed", file=target_file.name, error=str(e))
-                        if temp_html_path.exists():
-                            temp_html_path.unlink()
-                        pass
-            except Exception:
-                pass
-
-        # 3. Parse Sections
-        sections = parser.parse(target_file, form_type=meta.filing_type)
-        # We NO LONGER return early here. Even if 0 sections are found, we still want to record the document existance in Snowflake.
-
-        # 4. JSON Generation & Hash
+        # 2. Parse Sections (Prioritize Data)
+        sections = {}
+        try:
+            sections = parser.parse(target_file, form_type=meta.filing_type)
+        except Exception as e:
+            logger.warning("parsing_failed_partial_save", ticker=meta.ticker, accession=meta.accession_number, error=str(e))
+        
+        # 3. JSON Generation & Hash
         content_str = json.dumps(sections, sort_keys=True)
-        # If no sections were found, make hash unique to this filing so it's not skipped as a 'generic empty' duplicate
-        hash_input = content_str if sections else f"{content_str}_{meta.accession_number}"
+        # Ensure hash is unique to this specific filing even if empty
+        hash_input = f"{content_str}_{meta.accession_number}_{meta.cik}"
         content_hash = hashlib.sha256(hash_input.encode("utf-8")).hexdigest()
 
         if registry.is_processed(content_hash):
             results_chunk["skipped"] = 1
             return results_chunk
 
-        # 5. Upload Parsed JSON
-        s3_key = f"sec/{meta.cik}/{meta.filing_type}/{meta.accession_number}/parsed.json"
-        aws.upload_bytes(content_str.encode("utf-8"), s3_key, "application/json")
+        # 4. Upload Parsed JSON (Only if we have content)
+        s3_key = f"{settings.AWS_FOLDER}/{meta.cik}/{meta.filing_type}/{meta.accession_number}/parsed.json"
+        if sections:
+            try:
+                aws.upload_bytes(content_str.encode("utf-8"), s3_key, "application/json")
+            except Exception as e:
+                logger.warning("json_upload_failed", error=str(e))
 
-        # 6. Chunking
+        # 5. Chunking
         all_chunks = []
-        chunk_index_counter = 0
-
-        for section_name, text in sections.items():
-            chunks = chunker.chunk(text)
-            for chunk_text in chunks:
-                # TRUNCATE to avoid DB Crash. Snowflake limits can be hit.
-                safe_text = chunk_text[:60000] # 60k chars safety limit
-                
-                all_chunks.append({
-                    "section": section_name,
-                    "text": safe_text, 
-                    "index": chunk_index_counter,
-                    "tokens": len(safe_text.split())
-                })
-                chunk_index_counter += 1
+        try:
+            chunk_index_counter = 0
+            for section_name, text in sections.items():
+                chunks = chunker.chunk(text)
+                for chunk_text in chunks:
+                    safe_text = chunk_text[:60000]
+                    all_chunks.append({
+                        "section": section_name,
+                        "text": safe_text, 
+                        "index": chunk_index_counter,
+                        "tokens": len(safe_text.split())
+                    })
+                    chunk_index_counter += 1
+        except Exception as e:
+            logger.warning("chunking_failed", ticker=meta.ticker, error=str(e))
 
         doc_id = f"{meta.cik}_{meta.accession_number}"
-        
         results_chunk["processed"] = 1
         results_chunk["doc_data"] = {
             "doc_id": doc_id,
@@ -178,6 +101,71 @@ def process_filing_worker(meta, download_dir: str, known_hashes: set = None):
             "content_hash": content_hash,
             "all_chunks": all_chunks
         }
+
+        # 6. Best-effort PDF Generation (Last step, doesn't block data if it fails)
+        if target_file.suffix.lower() in ['.html', '.htm', '.txt']:
+            try:
+                pdf_filename = target_file.stem + ".pdf"
+                local_pdf_path = target_file.parent / pdf_filename
+                s3_pdf_key = f"{settings.AWS_FOLDER}/{meta.cik}/{meta.filing_type}/{meta.accession_number}/{pdf_filename}"
+                
+                # Check file size (optimized limit 200MB)
+                if target_file.stat().st_size <= 200 * 1024 * 1024:
+                    temp_html_path = target_file.with_name(f"{target_file.stem}_clean.html")
+                    try:
+                        with open(target_file, 'r', encoding='utf-8', errors='ignore') as f:
+                            content = f.read()
+
+                        # Extract main document text
+                        html_content = content
+                        if "<SEC-DOCUMENT>" in content or "<DOCUMENT>" in content:
+                            ftype = re.escape(meta.filing_type)
+                            pattern = re.compile(r'<DOCUMENT>.*?>\s*<TYPE>.*?' + ftype + r'.*?<TEXT>(.*?)</TEXT>', re.DOTALL | re.IGNORECASE)
+                            match = pattern.search(content)
+                            if match:
+                                html_content = match.group(1).strip()
+                            else:
+                                match_any = re.search(r'<TEXT>(.*?)</TEXT>', content, re.DOTALL | re.IGNORECASE)
+                                if match_any:
+                                    html_content = match_any.group(1).strip()
+
+                        # Strip heavy Base64 content to prevent hangs
+                        html_content = re.sub(r'<img[^>]+src=["\']data:image/[^"\']+["\'][^>]*>', '<!-- [Image Removed] -->', html_content, flags=re.IGNORECASE)
+                        html_content = re.sub(r'<graphic>.*?</graphic>', '<!-- [Graphic Removed] -->', html_content, flags=re.DOTALL | re.IGNORECASE)
+
+                        if "<html>" not in html_content.lower():
+                             html_content = f"<html><body><pre>{html_content}</pre></body></html>"
+                        
+                        with open(temp_html_path, 'w', encoding='utf-8') as f:
+                            f.write(html_content)
+
+                        if not local_pdf_path.exists():
+                            options = {
+                                'page-size': 'A4',
+                                'margin-top': '0.75in',
+                                'margin-right': '0.75in',
+                                'margin-bottom': '0.75in',
+                                'margin-left': '0.75in',
+                                'encoding': "UTF-8",
+                                'no-outline': None,
+                                'enable-local-file-access': None,
+                                'quiet': '',
+                            }
+                            pdfkit.from_file(str(temp_html_path), str(local_pdf_path), options=options)
+                        
+                        if local_pdf_path.exists() and local_pdf_path.stat().st_size > 1024:
+                             aws.upload_file(str(local_pdf_path), s3_pdf_key)
+                    except Exception as e:
+                        logger.warning("pdfkit_gen_failed", file=target_file.name, error=str(e))
+                    finally:
+                        if temp_html_path.exists():
+                            try: temp_html_path.unlink()
+                            except: pass
+                else:
+                    logger.warning("pdf_gen_skipped_massive_file", file=target_file.name, size=target_file.stat().st_size)
+            except Exception:
+                pass
+
         return results_chunk
 
     except Exception as e:
@@ -223,12 +211,9 @@ class SecPipeline:
         loop = asyncio.get_event_loop()
         
         # 2. Schedule Processing in Process Pool
-        # We process in batches to avoid event loop congestion if many files
-        
-        process_tasks = []
+        tasks = []
         for meta in metadatas:
             # Offload to separate process
-            # Note: meta must be picklable (it is a Pydantic model usually, or simple object)
             task = loop.run_in_executor(
                 self.pool, 
                 process_filing_worker, 
@@ -236,38 +221,39 @@ class SecPipeline:
                 self.download_dir,
                 self.registry.known_hashes
             )
-            process_tasks.append(task)
+            tasks.append(task)
 
-        # Wait for all
-        batch_results = await asyncio.gather(*process_tasks, return_exceptions=True)
-
-        # 3. Aggregate results and Save to DB (I/O bound, main process)
-        for res in batch_results:
-            if isinstance(res, Exception):
-                logger.error("task_execution_failed", error=str(res))
-                results["errors"] += 1
-                continue
-            
-            # Check for internal error in worker
-            if res.get("errors"):
-                logger.error("worker_processing_error", error=res.get("error_msg"))
-                results["errors"] += 1
-                continue
-
-            doc_data = res.get("doc_data")
-            if doc_data:
-                # Save to DB (async, main process)
-                try:
-                    await self._save_to_db(doc_data)
-                    results["processed"] += 1
-                except Exception as e:
-                    logger.error("db_save_failed", error=str(e))
+        # 3. Process results ALIVE as they finish
+        # This ensures that even if one file hangs or fails, others are saved immediately.
+        for completed_task in asyncio.as_completed(tasks):
+            try:
+                # 2.5-minute timeout per file to prevent entire company backfill from hanging
+                res = await asyncio.wait_for(completed_task, timeout=150)
+                
+                if isinstance(res, Exception):
+                    logger.error("task_execution_failed", error=str(res))
                     results["errors"] += 1
-            elif res.get("skipped"):
-                results["skipped"] += 1
-            else:
-                 # No doc data, no error, no skipped? (e.g. file not found)
-                 pass
+                    continue
+                
+                if res.get("errors"):
+                    logger.error("worker_processing_error", error=res.get("error_msg"))
+                    results["errors"] += 1
+                    continue
+
+                doc_data = res.get("doc_data")
+                if doc_data:
+                    try:
+                        await self._save_to_db(doc_data)
+                        results["processed"] += 1
+                    except Exception as e:
+                        logger.error("db_save_failed", error=str(e))
+                        results["errors"] += 1
+                elif res.get("skipped"):
+                    results["skipped"] += 1
+                
+            except Exception as e:
+                logger.error("task_stream_error", error=str(e))
+                results["errors"] += 1
 
         logger.info("pipeline_complete", results=results)
         return results

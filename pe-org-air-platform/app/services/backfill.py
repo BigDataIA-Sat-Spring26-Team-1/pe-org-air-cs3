@@ -144,10 +144,10 @@ class BackfillService:
         async def _bounded_process(ticker: str):
             async with semaphore:
                 try:
-                    # 15-minute timeout prevents hanging forever
-                    await asyncio.wait_for(_process_company_full(ticker), timeout=900)
+                    # 60-minute timeout prevents hanging forever
+                    await asyncio.wait_for(_process_company_full(ticker), timeout=3600)
                 except asyncio.TimeoutError:
-                    logger.error(f"TIMED OUT processing {ticker} after 15 minutes.")
+                    logger.error(f"TIMED OUT processing {ticker} after 60 minutes.")
                     self._stats["errors"] += 1
                 except Exception as e:
                     logger.error(f"Failed to process {ticker}: {e}", exc_info=True)

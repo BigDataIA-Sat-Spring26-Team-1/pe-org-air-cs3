@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: SecretStr = None
     AWS_REGION: str = "us-east-1"
     S3_BUCKET: Optional[str] = None
+    AWS_FOLDER: str = "sec"
 
     model_config = SettingsConfigDict(
         env_file=".env",
