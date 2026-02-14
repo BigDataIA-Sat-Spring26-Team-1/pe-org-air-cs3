@@ -16,3 +16,8 @@ logs/
 
 # Data
 data/
+
+# Glassdoor Kaggle Dataset
+all_reviews.csv
+target_company_reviews_strict.csv
+target_company_reviews.csv
