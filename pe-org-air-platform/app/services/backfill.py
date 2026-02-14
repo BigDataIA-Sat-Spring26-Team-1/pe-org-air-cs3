@@ -36,10 +36,16 @@ class BackfillService:
             "last_run": None,
             "duration_seconds": 0
         }
+        self._current_start_time = None
 
     @property
     def stats(self) -> Dict[str, Any]:
-        return self._stats
+        # Return a copy to avoid mutation issues
+        current_stats = self._stats.copy()
+        if self._stats["status"] == "running" and self._current_start_time:
+            elapsed = datetime.utcnow() - self._current_start_time
+            current_stats["duration_seconds"] = round(elapsed.total_seconds(), 2)
+        return current_stats
 
     @property
     def target_companies(self) -> List[str]:
@@ -54,8 +60,11 @@ class BackfillService:
         self._stats["signals"] = 0
         self._stats["documents"] = 0
         self._stats["errors"] = 0
+        self._stats["duration_seconds"] = 0
         self._stats["last_run"] = datetime.utcnow().isoformat()
-        start_time = datetime.utcnow()
+        self._current_start_time = datetime.utcnow()
+        
+        start_time = self._current_start_time # for local scope compatibility if needed
         
         sec_pipeline = SecPipeline()
         signal_pipeline = MasterPipeline()
