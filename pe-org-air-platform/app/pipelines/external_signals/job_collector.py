@@ -149,7 +149,7 @@ class JobCollector:
                 
                 # Scraper is synchronous, run in executor
                 df = await loop.run_in_executor(None, lambda query=q: scrape_jobs(
-                    site_name=["linkedin", "indeed", "glassdoor"],
+                    site_name=["linkedin"],
                     search_term=query,
                     location="USA",
                     results_wanted=50,  # Balanced for volume and safety
