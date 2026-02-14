@@ -29,32 +29,54 @@ class TalentConcentrationCalculatorV2:
         "nlp", "computer vision", "llm", "generative ai"
     ]
 
+    AI_ROLE_KEYWORDS = [
+        "data scientist", "data engineer", "machine learning", "ml engineer", "ai engineer",
+        "artificial intelligence", "deep learning", "computer vision", "nlp",
+        "software engineer", "developer", "programmer", "architect",
+        "quantitative", "quant", "analyst", "researcher", "statistician", "data"
+    ]
+
     def calculate_tc(
         self,
         reviews_df: pd.DataFrame,
         job_descriptions: List[str]
     ) -> Decimal:
         """
-        Calculate talent concentration ratio using strictly Glassdoor for 1, 2, 4 and Snowflake for 3.
+        Calculate talent concentration.
         
-        Args:
-            reviews_df: DataFrame containing Glassdoor reviews (columns: title, pros, cons, advice).
-            job_descriptions: List of job descriptions from Snowflake for skill extraction.
+        CRITICAL CHANGE: We first filter reviews to only consider the AI/Tech workforce.
+        Using the total reviews for a massive bank like JPM dilutes the risk metric.
         """
         if reviews_df.empty:
             return Decimal("0.5")
-            
-        # 1. Leadership Ratio (Glassdoor)
-        leadership_ratio = self._calculate_leadership_ratio(reviews_df)
+
+        # 0. Filter for AI/Tech Roles
+        # We look for role keywords in the 'job' (title) column
+        pattern = '|'.join(self.AI_ROLE_KEYWORDS)
+        tech_reviews = reviews_df[reviews_df['job'].str.contains(pattern, case=False, na=False)].copy()
         
-        # 2. Team Size Factor (Glassdoor Proxy)
-        team_size_factor = self._calculate_team_size_factor(reviews_df)
+        tech_count = len(tech_reviews)
+        if tech_count == 0:
+            # If no tech reviews found, we can't assess concentration properly.
+            # Defaulting to High Concentration (1.0) or specific fallback?
+            # Let's return neutral 0.5 but log warning implicitly by the count
+            print("  Warning: No AI/Tech reviews found for concentration analysis.")
+            return Decimal("0.5")
+
+        print(f"  Filtered {len(reviews_df)} total reviews down to {tech_count} AI/Tech reviews.")
+
+        # 1. Leadership Ratio (Glassdoor - Tech Only)
+        leadership_ratio = self._calculate_leadership_ratio(tech_reviews)
         
-        # 3. Skill Concentration (Snowflake)
-        skill_concentration = self._calculate_skill_concentration(job_descriptions)
+        # 2. Team Size Factor (Glassdoor Proxy - Tech Only)
+        team_size_factor = self._calculate_team_size_factor(tech_reviews)
         
-        # 4. Individual Mentions (Glassdoor)
-        individual_factor = self._calculate_individual_mention_factor(reviews_df)
+        # 3. Skill Concentration (Snowflake - Already Job Description based)
+        skill_concentration, _ = self._calculate_skill_concentration(job_descriptions)
+        
+        # 4. Individual Mentions (Glassdoor - Tech Only)
+        # We care about key person risk *within* the tech team
+        individual_factor = self._calculate_individual_mention_factor(tech_reviews)
         
         # Weighted combination
         tc = (
@@ -101,10 +123,11 @@ class TalentConcentrationCalculatorV2:
         factor = min(1.0, 1.0 / denominator)
         return Decimal(str(round(factor, 4)))
 
-    def _calculate_skill_concentration(self, descriptions: List[str]) -> Decimal:
+    def _calculate_skill_concentration(self, descriptions: List[str]) -> (Decimal, Set[str]):
         """
         Calculate skill concentration from Snowflake job descriptions.
         Concentration = 1 - (unique_skills / 15)
+        Returns: (score, set_of_found_skills)
         """
         found_skills = set()
         for desc in descriptions:
@@ -115,7 +138,7 @@ class TalentConcentrationCalculatorV2:
         
         unique_count = len(found_skills)
         concentration = 1.0 - (unique_count / 15.0)
-        return Decimal(str(max(0.0, min(1.0, concentration))))
+        return Decimal(str(max(0.0, min(1.0, concentration)))), found_skills
 
     def _calculate_individual_mention_factor(self, df: pd.DataFrame) -> Decimal:
         """

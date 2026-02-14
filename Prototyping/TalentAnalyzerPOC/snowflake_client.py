@@ -27,22 +27,22 @@ class SnowflakeClient:
             role=self.role
         )
 
-    def fetch_job_skills(self, company_name: str) -> List[str]:
+    def fetch_job_skills(self, company_identifier: str) -> List[str]:
         """
-        Fetch all job descriptions or skills for a given company to calculate concentration.
+        Fetch all job descriptions from SIGNAL_EVIDENCE for a given company (ticker or name).
         """
         conn = self.get_connection()
         try:
-            # We need to find the table that has job postings. 
-            # Assuming a table structure based on previous context or a standard name
-            # Let's try to query JOB_POSTINGS
-            
-            # Note: company_name matching might need to be fuzzy or exact based on DB
+            # Join SIGNAL_EVIDENCE with COMPANIES to filter by company name/ticker
+            # We look for evidence associated with technology hiring or general job signals
             query = f"""
-                SELECT description
-                FROM JOB_POSTINGS
-                WHERE company ILIKE '%{company_name}%'
-                AND description IS NOT NULL
+                SELECT se.description
+                FROM SIGNAL_EVIDENCE se
+                JOIN COMPANIES c ON se.company_id = c.id
+                WHERE (c.ticker = '{company_identifier}' OR c.name ILIKE '%{company_identifier}%')
+                AND se.category = 'technology_hiring'
+                AND se.description IS NOT NULL
+                limit 1000
             """
             
             cursor = conn.cursor()

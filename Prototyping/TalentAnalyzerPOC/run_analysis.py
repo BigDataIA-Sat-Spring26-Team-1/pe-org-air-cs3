@@ -86,21 +86,30 @@ def main():
     analyzer = TalentConcentrationCalculatorV2()
     
     try:
-        # Calculate individual components for visibility
-        leadership_ratio = analyzer._calculate_leadership_ratio(jpm_reviews)
-        team_size_factor = analyzer._calculate_team_size_factor(jpm_reviews)
-        skill_concentration = analyzer._calculate_skill_concentration(job_descriptions)
-        individual_metrics = analyzer._calculate_individual_mention_factor(jpm_reviews)
+        # Pre-filter for transparent reporting (Matching logic inside calculate_tc)
+        pattern = '|'.join(analyzer.AI_ROLE_KEYWORDS)
+        tech_reviews = jpm_reviews[jpm_reviews['job'].str.contains(pattern, case=False, na=False)].copy()
         
+        print(f"\n[Breakdown Analysis on {len(tech_reviews)} AI/Tech Reviews]")
+        
+        # Calculate individual components on the *filtered* dataset
+        leadership_ratio = analyzer._calculate_leadership_ratio(tech_reviews)
+        team_size_factor = analyzer._calculate_team_size_factor(tech_reviews)
+        skill_concentration, found_skills = analyzer._calculate_skill_concentration(job_descriptions)
+        individual_metrics = analyzer._calculate_individual_mention_factor(tech_reviews)
+        
+        # This will run the filtering internally again, but consistency is key
         final_tc = analyzer.calculate_tc(jpm_reviews, job_descriptions)
         
-        print("\nResults for JPM:")
+        print("\nResults for JPM (AI/Tech Focused):")
         print(f"  Total Reviews Analyzed:      {len(jpm_reviews):,}")
+        print(f"  AI/Tech Reviews:             {len(tech_reviews):,}")
         print(f"  Job Descriptions Analyzed:   {len(job_descriptions):,}")
         print("-" * 30)
         print(f"  1. Leadership Ratio (40%):    {leadership_ratio:.4f}")
         print(f"  2. Team Size Factor (30%):    {team_size_factor:.4f}")
         print(f"  3. Skill Concentration (20%): {skill_concentration:.4f}")
+        print(f"     Skills Found ({len(found_skills)}): {', '.join(sorted(found_skills))}")
         print(f"  4. Individual Mentions (10%): {individual_metrics:.4f}")
         print("-" * 30)
         print(f"  FINAL TALENT CONCENTRATION:   {final_tc:.4f}")
