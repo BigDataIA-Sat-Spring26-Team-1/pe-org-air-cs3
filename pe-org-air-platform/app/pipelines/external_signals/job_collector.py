@@ -28,7 +28,8 @@ class JobCollector:
         "transformer", "bert", "gpt", "rag", "vector database",
         "reinforcement learning", "neural network", "predictive modeling",
         "statistical learning", "autoencoder", "gan", "diffusion model",
-        "applied ai", "ai solutions", "ml researcher"
+        "applied ai", "ai solutions", "ml researcher",
+        "agentic", "ai agent", "prompt engineer", "copilot", "autonomous system"
     ]
 
     AI_SKILLS_LIST = [
@@ -39,7 +40,8 @@ class JobCollector:
         "cohere", "llama", "mistral", "pandas", "numpy",
         "jax", "keras", "xgboost", "lightgbm", "pinecone",
         "milvus", "weaviate", "chroma", "mongodb", "snowflake",
-        "databricks", "mlflow", "kubeflow", "airflow", "dvc"
+        "databricks", "mlflow", "kubeflow", "airflow", "dvc",
+        "langgraph", "langsmith", "autogen", "crewai", "ollama"
     ]
 
     # Identifies roles with engineering, data, or analytical focus
@@ -130,7 +132,10 @@ class JobCollector:
         queries = [
             clean_name,                                      # Broad Strategy
             f"{clean_name} AI",                              # AI-Specific Strategy
-            f"{clean_name} Data Science"                    # Data-Strategy
+            f"{clean_name} Data Science",                    # Data-Strategy
+            f"{clean_name} Machine Learning",                # ML-Specific Strategy
+            f"{clean_name} Software Engineer",               # General Tech Strategy (Crucial for non-tech firms)
+            f"{clean_name} ML/AI"                             # Experimental Strategy (Proven effective)
         ]
         
         all_jobs_df = pd.DataFrame()
@@ -139,17 +144,24 @@ class JobCollector:
         for q in queries:
             logger.info(f"   [Search Strategy] Querying: {q}...")
             try:
+                # Add delay to avoid rate limiting
+                await asyncio.sleep(random.uniform(3.0, 7.0))
+                
                 # Scraper is synchronous, run in executor
                 df = await loop.run_in_executor(None, lambda query=q: scrape_jobs(
-                    site_name=["linkedin"],
+                    site_name=["linkedin", "indeed", "glassdoor"],
                     search_term=query,
                     location="USA",
-                    results_wanted=25,
+                    results_wanted=50,  # Balanced for volume and safety
                     hours_old=days * 24,
                     linkedin_fetch_description=True
                 ))
+                
                 if not df.empty:
+                    logger.info(f"      Found {len(df)} postings for '{q}'")
                     all_jobs_df = pd.concat([all_jobs_df, df], ignore_index=True)
+                else:
+                    logger.warning(f"      No postings discovered for '{q}' (might be rate-limited if returned instantly)")
             except Exception as e:
                 logger.error(f"      Hiring data scrape failed for query {q}: {str(e)}")
 

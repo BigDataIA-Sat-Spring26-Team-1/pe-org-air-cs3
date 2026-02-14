@@ -22,7 +22,7 @@ class MasterPipeline:
         self.tech_collector = TechStackCollector()
         self.lead_collector = LeadershipCollector()
 
-    async def run(self, company_name: str, ticker: str, company_id: str = None, job_days: int = 7, patent_years: int = 5) -> Dict[str, Any]:
+    async def run(self, company_name: str, ticker: str, company_id: str = None, job_days: int = 60, patent_years: int = 5) -> Dict[str, Any]:
         """Runs all collectors and prepares data for database."""
         if not company_id:
             company_id = str(uuid.uuid4())
