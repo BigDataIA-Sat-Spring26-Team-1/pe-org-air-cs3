@@ -27,6 +27,24 @@ class SnowflakeClient:
             role=self.role
         )
 
+    def verify_company_ticker(self, search_term: str):
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            query = f"""
+                SELECT id, name, ticker 
+                FROM COMPANIES 
+                WHERE name ILIKE '%{search_term}%' OR ticker = '{search_term}'
+            """
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            print(f"Checking Company for '{search_term}':")
+            for row in rows:
+                print(f"  Found: ID={row[0]}, Name={row[1]}, Ticker={row[2]}")
+            return rows
+        finally:
+            conn.close()
+
     def fetch_job_skills(self, company_identifier: str) -> List[str]:
         """
         Fetch all job descriptions from SIGNAL_EVIDENCE for a given company (ticker or name).

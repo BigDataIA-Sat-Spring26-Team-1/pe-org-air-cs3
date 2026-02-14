@@ -16,24 +16,33 @@ class TalentConcentrationCalculatorV2:
     """
     
     SENIORITY_KEYWORDS = {
-        "senior": ["principal", "staff", "director", "vp", "head", "chief", "lead", "manager"],
-        "mid": ["senior"], # Overlaps handled by order usually, but let's keep simple
-        "entry": ["junior", "associate", "entry", "intern", "analyst"]
+        "senior": ["principal", "staff", "director", "vp", "head", "chief", "executive", "president", "vice president", "svp"],
+        "mid": ["senior", "manager", "lead", "architect", "fellow"], 
+        "entry": ["junior", "associate", "entry", "intern", "analyst", "i", "ii", "iii", "iv", "v"]
     }
+    
+    # Expanded based on deep analysis of Snowflake & Glassdoor data
+    AI_ROLE_KEYWORDS = [
+        # Core AI/Data
+        "data scientist", "data engineer", "machine learning", "ml engineer", "ai engineer",
+        "artificial intelligence", "deep learning", "computer vision", "nlp", "statistician",
+        "quantitative", "quant", "math", "model", "algorithm",
+        
+        # Tech Engineering
+        "software engineer", "developer", "programmer", "architect", "technical", 
+        "systems engineer", "security engineer", "feature engineer",
+        
+        # Data/Analytics (Banking heavy)
+        "data analyst", "business intelligence", "analytics", "operations analyst", "technology analyst"
+    ]
     
     AI_SKILL_KEYWORDS = [
         "python", "java", "scala", "r", "sql",
         "tensorflow", "pytorch", "keras", "scikit-learn",
         "spark", "hadoop", "kafka", "airflow",
         "aws", "azure", "gcp", "docker", "kubernetes",
-        "nlp", "computer vision", "llm", "generative ai"
-    ]
-
-    AI_ROLE_KEYWORDS = [
-        "data scientist", "data engineer", "machine learning", "ml engineer", "ai engineer",
-        "artificial intelligence", "deep learning", "computer vision", "nlp",
-        "software engineer", "developer", "programmer", "architect",
-        "quantitative", "quant", "analyst", "researcher", "statistician", "data"
+        "nlp", "computer vision", "llm", "generative ai",
+        "analytics", "models", "capital markets", "strategic", "design", "algorithm" # From deep analysis
     ]
 
     def calculate_tc(

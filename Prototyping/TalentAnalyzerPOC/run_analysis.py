@@ -11,7 +11,12 @@ from snowflake_client import SnowflakeClient
 from talent_analyzer_v2 import TalentConcentrationCalculatorV2
 
 def main():
-    print("Starting Talent Analyzer POC for JPMorgan Chase (JPM)...")
+    if len(sys.argv) > 1:
+        company_ticker = sys.argv[1]
+    else:
+        company_ticker = 'JPM'
+        
+    print(f"Starting Talent Analyzer POC for {company_ticker}...")
     
     # 1. Load Environment Variables from Platform Dir
     env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'pe-org-air-platform', '.env'))
@@ -22,7 +27,8 @@ def main():
         print("WARNING: .env file not found! Snowflake connection may fail.")
 
     # 2. Fetch Glassdoor Data (Components 1, 2, 4)
-    csv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'Glassdoor review analysis', 'target_company_reviews_strict.csv'))
+    # Switched to broader dataset per user request to capture NVDA
+    csv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'Glassdoor review analysis', 'target_company_reviews.csv'))
     
     try:
         print(f"Loading '{csv_path}'...")
@@ -30,8 +36,16 @@ def main():
              raise FileNotFoundError(f"CSV not found at {csv_path}")
              
         df = pd.read_csv(csv_path)
-        jpm_reviews = df[df['company_ticker'] == 'JPM'].copy()
-        print(f"Found {len(jpm_reviews)} JPM reviews.")
+        # Using the command line ticker logic
+        # CSV might have "JPM" or "WMT"?
+        target_reviews = df[df['company_ticker'] == company_ticker].copy()
+        
+        # If no reviews found, try finding by name if ticker isn't exact in CSV
+        if target_reviews.empty and company_ticker == 'WMT':
+             # Maybe "Walmart"?
+             pass # Stick to WMT for now based on verify.py
+             
+        print(f"Found {len(target_reviews)} reviews for {company_ticker}.")
         
     except Exception as e:
         print(f"ERROR: Could not load CSV data: {e}")
@@ -40,7 +54,7 @@ def main():
     # 3. Fetch Snowflake Data (Component 3: Skill Concentration)
     job_descriptions = []
     
-    print("Attempting to fetch job descriptions from Snowflake...")
+    print(f"Attempting to fetch job descriptions from Snowflake for {company_ticker}...")
     try:
         # Check credentials briefly
         user = os.getenv("SNOWFLAKE_USER")
@@ -58,7 +72,7 @@ def main():
         else:
             client = SnowflakeClient()
             # Try to fetch
-            job_descriptions = client.fetch_job_skills("JPMorgan") # Broad search
+            job_descriptions = client.fetch_job_skills(company_ticker) # Broad search
             if not job_descriptions:
                 print("  No job descriptions found in Snowflake. Using fallback mock data.")
                 job_descriptions = [
@@ -88,7 +102,7 @@ def main():
     try:
         # Pre-filter for transparent reporting (Matching logic inside calculate_tc)
         pattern = '|'.join(analyzer.AI_ROLE_KEYWORDS)
-        tech_reviews = jpm_reviews[jpm_reviews['job'].str.contains(pattern, case=False, na=False)].copy()
+        tech_reviews = target_reviews[target_reviews['job'].str.contains(pattern, case=False, na=False)].copy()
         
         print(f"\n[Breakdown Analysis on {len(tech_reviews)} AI/Tech Reviews]")
         
@@ -99,10 +113,10 @@ def main():
         individual_metrics = analyzer._calculate_individual_mention_factor(tech_reviews)
         
         # This will run the filtering internally again, but consistency is key
-        final_tc = analyzer.calculate_tc(jpm_reviews, job_descriptions)
+        final_tc = analyzer.calculate_tc(target_reviews, job_descriptions)
         
-        print("\nResults for JPM (AI/Tech Focused):")
-        print(f"  Total Reviews Analyzed:      {len(jpm_reviews):,}")
+        print(f"\nResults for {company_ticker} (AI/Tech Focused):")
+        print(f"  Total Reviews Analyzed:      {len(target_reviews):,}")
         print(f"  AI/Tech Reviews:             {len(tech_reviews):,}")
         print(f"  Job Descriptions Analyzed:   {len(job_descriptions):,}")
         print("-" * 30)
