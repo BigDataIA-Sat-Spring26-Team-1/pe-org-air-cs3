@@ -1,40 +1,59 @@
+from dataclasses import dataclass
 from decimal import Decimal
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Set, Optional
 import math
+import re
 
+@dataclass
+class JobAnalysis:
+    """Analysis of job postings for talent concentration."""
+    total_ai_jobs: int
+    senior_ai_jobs: int      # Principal, Staff, Director, VP level
+    mid_ai_jobs: int         # Senior, Lead level
+    entry_ai_jobs: int       # Junior, Associate, entry level
+    unique_skills: Set[str]  # Distinct skills required
 
 class TalentConcentrationCalculator:
     """
     Calculate talent concentration (key-person risk).
     
-    Talent Concentration (TC) measures how much AI capability depends on a few individuals:
-    - TC = 0.0: Capability distributed across many people (low risk)
-    - TC = 1.0: All capability in one person (maximum risk)
+    Formula (Task 5.0e):
+    TC = 0.4 * leadership_ratio + 
+         0.3 * team_size_factor + 
+         0.2 * skill_concentration + 
+         0.1 * individual_mentions
     
-    Formula from Lab 5:
-    TC = 0.4 × leadership_ratio + 
-         0.3 × team_size_factor + 
-         0.2 × skill_concentration + 
-         0.1 × individual_mentions
-    
-    TalentRiskAdj = 1 - 0.15 × max(0, TC - 0.25)
+    Formula for H^R:
+    TalentRiskAdj = 1 - 0.15 * max(0, TC - 0.25)
     """
     
     SENIORITY_KEYWORDS = {
-        "senior": ["principal", "staff", "director", "vp", "head", "chief"],
-        "mid": ["senior", "lead", "manager"],
-        "entry": ["junior", "associate", "entry", "intern"]
+        "senior": ["principal", "staff", "director", "vp", "head", "chief", "executive"],
+        "mid": ["senior", "lead", "manager", "architect"],
+        "entry": ["junior", "associate", "entry", "intern", "analyst"]
     }
     
+    # Dynamic tech-first role markers (Sector agnostic)
     AI_ROLE_KEYWORDS = [
         "machine learning", "ml engineer", "data scientist", "ai engineer",
         "artificial intelligence", "deep learning", "nlp", "computer vision",
-        "data science"
+        "software engineer", "developer", "programmer", "architect", "systems engineer",
+        "data engineer", "ai scientist"
+    ]
+
+    # Expanded skill markers for maximum coverage
+    AI_SKILL_KEYWORDS = [
+        "python", "java", "scala", "r", "sql",
+        "tensorflow", "pytorch", "keras", "scikit-learn",
+        "spark", "hadoop", "kafka", "airflow",
+        "aws", "azure", "gcp", "docker", "kubernetes",
+        "nlp", "computer vision", "llm", "generative ai",
+        "algorithm", "neural networks", "cuda", "pandas", "pytorch"
     ]
 
     def calculate_tc(
         self,
-        job_postings: List[Dict],
+        job_analysis: JobAnalysis,
         glassdoor_individual_mentions: int = 0,
         glassdoor_review_count: int = 1
     ) -> Decimal:
@@ -42,34 +61,36 @@ class TalentConcentrationCalculator:
         Calculate talent concentration ratio.
         
         Args:
-            job_postings: List of job posting dicts with 'title', 'description'
-            glassdoor_individual_mentions: Count of reviews mentioning specific people
-            glassdoor_review_count: Total Glassdoor reviews
-        
-        Returns:
-            Talent concentration in [0, 1]
+            job_analysis: Analysis object from analyze_job_postings
+            glassdoor_individual_mentions: Count of reviews mentioning specific individual names/titles
+            glassdoor_review_count: Total count of glassdoor reviews
         """
-        if not job_postings:
-            return Decimal("0.5")  # Neutral if no data
         
-        # Analyze job postings
-        job_analysis = self._analyze_job_postings(job_postings)
-        
-        # Component 1: Leadership ratio (40% weight)
-        leadership_ratio = self._calculate_leadership_ratio(job_analysis)
-        
-        # Component 2: Team size factor (30% weight)
-        team_size_factor = self._calculate_team_size_factor(job_analysis)
-        
-        # Component 3: Skill concentration (20% weight)
-        skill_concentration = self._calculate_skill_concentration(job_analysis)
-        
-        # Component 4: Individual mentions (10% weight)
-        individual_factor = self._calculate_individual_mention_factor(
-            glassdoor_individual_mentions,
-            glassdoor_review_count
-        )
-        
+        # 1. Leadership Ratio (40%)
+        if job_analysis.total_ai_jobs > 0:
+            leadership_ratio = Decimal(job_analysis.senior_ai_jobs) / Decimal(job_analysis.total_ai_jobs)
+        else:
+            leadership_ratio = Decimal("0.5")  # Default neutrality
+
+        # 2. Team Size Factor (30%)
+        # team_size_factor = min(1.0, 1.0 / (total_ai_jobs ** 0.5 + 0.1))
+        total_jobs = Decimal(str(job_analysis.total_ai_jobs))
+        team_size_denominator = Decimal(str(math.sqrt(float(total_jobs)) + 0.1)) if total_jobs > 0 else Decimal("0.1")
+        team_size_factor = min(Decimal("1.0"), Decimal("1.0") / team_size_denominator)
+
+        # 3. Skill Concentration (20%)
+        # skill_concentration = max(0, 1 - (unique_skills / 15))
+        unique_skills_count = len(job_analysis.unique_skills)
+        skill_concentration = max(Decimal("0"), Decimal("1.0") - (Decimal(str(unique_skills_count)) / Decimal("15.0")))
+        skill_concentration = min(Decimal("1.0"), skill_concentration)
+
+        # 4. Individual Mentions (10%)
+        # individual_factor = individual_mentions / review_count
+        if glassdoor_review_count > 0:
+            individual_factor = min(Decimal("1.0"), Decimal(str(glassdoor_individual_mentions)) / Decimal(str(glassdoor_review_count)))
+        else:
+            individual_factor = Decimal("0.5")  # Default neutrality
+
         # Weighted combination
         tc = (
             Decimal("0.4") * leadership_ratio +
@@ -77,152 +98,119 @@ class TalentConcentrationCalculator:
             Decimal("0.2") * skill_concentration +
             Decimal("0.1") * individual_factor
         )
-        
-        # Bound to [0, 1]
-        tc = max(Decimal("0"), min(Decimal("1"), tc))
-        
-        return round(tc, 4)
 
-    def calculate_talent_risk_adjustment(self, tc: Decimal) -> Decimal:
-        """
-        Calculate TalentRiskAdj factor for H^R formula.
-        
-        TalentRiskAdj = 1 - 0.15 × max(0, TC - 0.25)
-        
-        Returns:
-            Adjustment factor (typically 0.85-1.0)
-        """
-        penalty = max(Decimal("0"), tc - Decimal("0.25"))
-        adjustment = Decimal("1") - (Decimal("0.15") * penalty)
-        return round(adjustment, 4)
+        return Decimal(str(max(0, min(1, tc)))).quantize(Decimal("0.0001"))
 
-    def _analyze_job_postings(self, job_postings: List[Dict]) -> Dict:
-        """Categorize job postings by level and extract skills."""
-        analysis = {
-            "total_ai_jobs": 0,
-            "senior_ai_jobs": 0,
-            "mid_ai_jobs": 0,
-            "entry_ai_jobs": 0,
-            "unique_skills": set()
-        }
+    def analyze_job_postings(self, postings: List[Dict]) -> JobAnalysis:
+        """
+        Categorize job postings by level and extract tech skills.
+        Expected format for postings: [{'title': str, 'description': str}]
+        """
+        analysis = JobAnalysis(
+            total_ai_jobs=0,
+            senior_ai_jobs=0,
+            mid_ai_jobs=0,
+            entry_ai_jobs=0,
+            unique_skills=set()
+        )
         
-        for job in job_postings:
-            title = str(job.get("title", "")).lower()
-            desc = str(job.get("description", "")).lower()
+        for job in postings:
+            title = str(job.get("title", "") or "").lower()
+            desc = str(job.get("description", "") or "").lower()
             
-            # Check if AI-related
-            if not any(kw in title or kw in desc for kw in self.AI_ROLE_KEYWORDS):
+            # Check if role matches AI/Tech taxonomy
+            is_tech_role = any(kw in title or kw in desc for kw in self.AI_ROLE_KEYWORDS)
+            if not is_tech_role:
                 continue
+                
+            analysis.total_ai_jobs += 1
             
-            analysis["total_ai_jobs"] += 1
-            
-            # Categorize by seniority (check in order: senior > mid > entry)
+            # Determine Seniority
             if any(kw in title for kw in self.SENIORITY_KEYWORDS["senior"]):
-                analysis["senior_ai_jobs"] += 1
-            elif any(kw in title for kw in self.SENIORITY_KEYWORDS["mid"]):
-                analysis["mid_ai_jobs"] += 1
+                analysis.senior_ai_jobs += 1
             elif any(kw in title for kw in self.SENIORITY_KEYWORDS["entry"]):
-                analysis["entry_ai_jobs"] += 1
+                analysis.entry_ai_jobs += 1
             else:
-                analysis["mid_ai_jobs"] += 1  # Default to mid
-            
-            # Extract skills (simplified: look for common tech keywords)
-            skills = self._extract_skills(desc)
-            analysis["unique_skills"].update(skills)
-        
+                analysis.mid_ai_jobs += 1  # Default to mid (Senior/Lead) if unspecified
+
+            # Extract Skills
+            for skill in self.AI_SKILL_KEYWORDS:
+                if skill in desc or skill in title:
+                    analysis.unique_skills.add(skill)
+                    
         return analysis
 
-    def _extract_skills(self, description: str) -> Set[str]:
-        """Extract technical skills from job description."""
-        skill_keywords = [
-            "python", "java", "scala", "r", "sql",
-            "tensorflow", "pytorch", "keras", "scikit-learn",
-            "spark", "hadoop", "kafka", "airflow",
-            "aws", "azure", "gcp", "docker", "kubernetes"
-        ]
+    def analyze_glassdoor_reviews(self, reviews: List[Dict]) -> Dict[str, int]:
+        """
+        Analyze Glassdoor reviews for individual mentions and sentiment.
+        Returns: {'individual_mentions': int, 'total_reviews': int}
+        """
+        mention_keywords = ["ceo", "cto", "cfo", "manager", "supervisor", "lead", "head of", "director"]
+        mention_count = 0
         
-        found_skills = set()
-        desc_lower = description.lower()
-        
-        for skill in skill_keywords:
-            if skill in desc_lower:
-                found_skills.add(skill)
-        
-        return found_skills
+        for r in reviews:
+            text = (str(r.get("title", "")) + " " + str(r.get("review_text", ""))).lower()
+            if any(kw in text for kw in mention_keywords):
+                mention_count += 1
+                
+        return {
+            "individual_mentions": mention_count,
+            "total_reviews": len(reviews)
+        }
 
-    def _calculate_leadership_ratio(self, job_analysis: Dict) -> Decimal:
+    @classmethod
+    async def get_company_talent_risk(cls, company_id: str, db_service) -> Dict[str, Any]:
         """
-        Calculate leadership ratio.
-        
-        leadership_ratio = senior_jobs / total_jobs
-        
-        High ratio = capability concentrated in leaders = high TC
+        Complete API flow: Fetches data from Snowflake and calculates Talent Concentration.
+        This provides a dynamic assessment based on the latest scraped signals.
         """
-        total = job_analysis["total_ai_jobs"]
-        if total == 0:
-            return Decimal("0.5")  # Default if no data
+        analyzer = cls()
         
-        senior = job_analysis["senior_ai_jobs"]
-        ratio = Decimal(senior) / Decimal(total)
+        # 1. Fetch Job Descriptions from Snowflake (Hiring Pipeline)
+        job_descs = await db_service.fetch_job_descriptions_for_talent(company_id)
         
-        return ratio
+        # 2. Analyze Jobs
+        # Note: We wrap descriptions in basic dicts for analyze_job_postings compatibility
+        job_list = [{"title": "", "description": d} for d in job_descs]
+        job_analysis = analyzer.analyze_job_postings(job_list)
+        
+        # 3. Fetch Glassdoor Reviews from Snowflake (Signal Pipeline)
+        reviews = await db_service.fetch_glassdoor_reviews_for_talent(company_id)
+        
+        # 4. Analyze Reviews for individual mentions
+        review_analysis = analyzer.analyze_glassdoor_reviews(reviews)
+        
+        # 5. Calculate Final TC Score using Case Study Logic
+        tc_score = analyzer.calculate_tc(
+            job_analysis,
+            glassdoor_individual_mentions=review_analysis['individual_mentions'],
+            glassdoor_review_count=review_analysis['total_reviews']
+        )
+        
+        # 6. Calculate TalentRiskAdj for H^R formula
+        risk_adj = analyzer.calculate_talent_risk_adj(tc_score)
+        
+        return {
+            "company_id": company_id,
+            "talent_concentration_score": float(tc_score),
+            "talent_risk_adjustment": float(risk_adj),
+            "breakdown": {
+                "total_ai_jobs": job_analysis.total_ai_jobs,
+                "senior_jobs": job_analysis.senior_ai_jobs,
+                "mid_jobs": job_analysis.mid_ai_jobs,
+                "entry_jobs": job_analysis.entry_ai_jobs,
+                "unique_skills_count": len(job_analysis.unique_skills),
+                "unique_skills": sorted(list(job_analysis.unique_skills)),
+                "glassdoor_mentions": review_analysis['individual_mentions'],
+                "glassdoor_reviews": review_analysis['total_reviews']
+            }
+        }
 
-    def _calculate_team_size_factor(self, job_analysis: Dict) -> Decimal:
+    def calculate_talent_risk_adj(self, tc: Decimal) -> Decimal:
         """
-        Calculate team size factor.
-        
-        team_size_factor = min(1.0, 1.0 / (total_ai_jobs ** 0.5 + 0.1))
-        
-        Smaller teams = higher TC (more concentrated)
+        Calculate TalentRiskAdj factor for Horizontal Readiness.
+        TalentRiskAdj = 1 - 0.15 * max(0, TC - 0.25)
         """
-        total = job_analysis["total_ai_jobs"]
-        
-        if total == 0:
-            return Decimal("1.0")  # Maximum concentration if no team
-        
-        # Formula from PDF
-        denominator = math.sqrt(total) + 0.1
-        factor = min(1.0, 1.0 / denominator)
-        
-        return Decimal(str(round(factor, 4)))
-
-    def _calculate_skill_concentration(self, job_analysis: Dict) -> Decimal:
-        """
-        Calculate skill concentration.
-        
-        skill_concentration = 1 - (unique_skills / 15) capped at [0,1]
-        
-        Fewer unique skills = higher concentration = higher TC
-        """
-        unique_skills = len(job_analysis["unique_skills"])
-        
-        # Normalize by 15 (reference number from PDF)
-        concentration = 1.0 - (unique_skills / 15.0)
-        concentration = max(0.0, min(1.0, concentration))
-        
-        return Decimal(str(round(concentration, 4)))
-
-    def _calculate_individual_mention_factor(
-        self,
-        individual_mentions: int,
-        total_reviews: int
-    ) -> Decimal:
-        """
-        Calculate individual mention factor from Glassdoor.
-        
-        individual_factor = glassdoor_individual_mentions / glassdoor_review_count
-        
-        More mentions of specific people = higher TC
-        
-        TODO: Implement once Glassdoor collection is complete.
-        This requires NLP to detect mentions of specific individuals in reviews.
-        """
-        if total_reviews == 0:
-            return Decimal("0.5")  # Neutral if no reviews
-        
-        # Placeholder: return neutral until Glassdoor NLP is implemented
-        return Decimal("0.5")
-        
-        # Future implementation:
-        # ratio = individual_mentions / total_reviews
-        # return Decimal(str(min(1.0, ratio)))
+        penalty_range = max(Decimal("0"), tc - Decimal("0.25"))
+        adj = Decimal("1.0") - (Decimal("0.15") * penalty_range)
+        return round(adj, 4)

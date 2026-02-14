@@ -551,6 +551,30 @@ class SnowflakeService:
         params.extend([limit, offset])
         return await self.fetch_all(query, tuple(params))
 
+    async def fetch_job_descriptions_for_talent(self, company_id: str, limit: int = 500) -> List[str]:
+        """Fetch raw job descriptions specifically for talent concentration analysis."""
+        query = """
+            SELECT description 
+            FROM signal_evidence 
+            WHERE company_id = %s 
+            AND category = 'technology_hiring'
+            AND description IS NOT NULL
+            LIMIT %s
+        """
+        rows = await self.fetch_all(query, (company_id, limit))
+        return [row['description'] for row in rows if row.get('description')]
+
+    async def fetch_glassdoor_reviews_for_talent(self, company_id: str, limit: int = 1000) -> List[Dict[str, Any]]:
+        """Fetch Glassdoor reviews (titles and text) for key-person risk analysis."""
+        query = """
+            SELECT title, description as review_text, metadata
+            FROM signal_evidence 
+            WHERE company_id = %s 
+            AND source = 'glassdoor'
+            LIMIT %s
+        """
+        return await self.fetch_all(query, (company_id, limit))
+
     # SEC Documents
     async def update_company_cik(self, ticker: str, cik: str, company_name: str) -> None:
         """Update CIK and normalized name for a company based on ticker."""
