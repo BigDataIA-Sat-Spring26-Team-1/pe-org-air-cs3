@@ -1,0 +1,141 @@
+from decimal import Decimal
+from typing import Dict, List, Set, Optional
+import math
+import re
+import pandas as pd
+
+class TalentConcentrationCalculatorV2:
+    """
+    Enhanced Talent Concentration Calculator using Glassdoor + Snowflake data.
+    
+    Formula:
+    TC = 0.4 * leadership_ratio (Glassdoor) + 
+         0.3 * team_size_factor (Glassdoor Proxy) + 
+         0.2 * skill_concentration (Snowflake) + 
+         0.1 * individual_mentions (Glassdoor)
+    """
+    
+    SENIORITY_KEYWORDS = {
+        "senior": ["principal", "staff", "director", "vp", "head", "chief", "lead", "manager"],
+        "mid": ["senior"], # Overlaps handled by order usually, but let's keep simple
+        "entry": ["junior", "associate", "entry", "intern", "analyst"]
+    }
+    
+    AI_SKILL_KEYWORDS = [
+        "python", "java", "scala", "r", "sql",
+        "tensorflow", "pytorch", "keras", "scikit-learn",
+        "spark", "hadoop", "kafka", "airflow",
+        "aws", "azure", "gcp", "docker", "kubernetes",
+        "nlp", "computer vision", "llm", "generative ai"
+    ]
+
+    def calculate_tc(
+        self,
+        reviews_df: pd.DataFrame,
+        job_descriptions: List[str]
+    ) -> Decimal:
+        """
+        Calculate talent concentration ratio using strictly Glassdoor for 1, 2, 4 and Snowflake for 3.
+        
+        Args:
+            reviews_df: DataFrame containing Glassdoor reviews (columns: title, pros, cons, advice).
+            job_descriptions: List of job descriptions from Snowflake for skill extraction.
+        """
+        if reviews_df.empty:
+            return Decimal("0.5")
+            
+        # 1. Leadership Ratio (Glassdoor)
+        leadership_ratio = self._calculate_leadership_ratio(reviews_df)
+        
+        # 2. Team Size Factor (Glassdoor Proxy)
+        team_size_factor = self._calculate_team_size_factor(reviews_df)
+        
+        # 3. Skill Concentration (Snowflake)
+        skill_concentration = self._calculate_skill_concentration(job_descriptions)
+        
+        # 4. Individual Mentions (Glassdoor)
+        individual_factor = self._calculate_individual_mention_factor(reviews_df)
+        
+        # Weighted combination
+        tc = (
+            Decimal("0.4") * leadership_ratio +
+            Decimal("0.3") * team_size_factor +
+            Decimal("0.2") * skill_concentration +
+            Decimal("0.1") * individual_factor
+        )
+        
+        tc = max(Decimal("0"), min(Decimal("1"), tc))
+        return round(tc, 4)
+
+    def _calculate_leadership_ratio(self, df: pd.DataFrame) -> Decimal:
+        """
+        Calculate leadership ratio based on review job titles.
+        ratio = senior_reviews / total_reviews
+        """
+        total = int(len(df))
+        if total == 0:
+            return Decimal("0.5")
+            
+        senior_pattern = '|'.join(self.SENIORITY_KEYWORDS["senior"])
+        # Case insensitive match for senior titles
+        senior_count = int(df['job'].str.contains(senior_pattern, case=False, na=False).sum())
+        
+        ratio = Decimal(senior_count) / Decimal(total)
+        # Normalize: if ratio > 0.3 (30% leaders), that's high concentration? 
+        # Or just use the raw ratio? The original used raw.
+        return ratio
+
+    def _calculate_team_size_factor(self, df: pd.DataFrame) -> Decimal:
+        """
+        Calculate team size factor using review volume as proxy.
+        More reviews -> Larger team -> Lower concentration (factor -> 0).
+        Fewer reviews -> Smaller team -> Higher concentration (factor -> 1).
+        
+        Formula: 1.0 / (sqrt(total_reviews) + 0.1)
+        """
+        total = int(len(df))
+        if total == 0:
+            return Decimal("1.0")
+            
+        denominator = math.sqrt(total) + 0.1
+        factor = min(1.0, 1.0 / denominator)
+        return Decimal(str(round(factor, 4)))
+
+    def _calculate_skill_concentration(self, descriptions: List[str]) -> Decimal:
+        """
+        Calculate skill concentration from Snowflake job descriptions.
+        Concentration = 1 - (unique_skills / 15)
+        """
+        found_skills = set()
+        for desc in descriptions:
+            desc_lower = str(desc).lower()
+            for skill in self.AI_SKILL_KEYWORDS:
+                if skill in desc_lower:
+                    found_skills.add(skill)
+        
+        unique_count = len(found_skills)
+        concentration = 1.0 - (unique_count / 15.0)
+        return Decimal(str(max(0.0, min(1.0, concentration))))
+
+    def _calculate_individual_mention_factor(self, df: pd.DataFrame) -> Decimal:
+        """
+        Calculate individual mention factor from Glassdoor text.
+        Looks for patterns like "CEO", "CTO", "Manager", "Supervisor" in pros/cons.
+        """
+        total = int(len(df))
+        if total == 0:
+            return Decimal("0.5")
+            
+        # Combining text fields
+        text_data = df['pros'].fillna('') + " " + df['cons'].fillna('') + " " + df['advice'].fillna('')
+        
+        # Simple keywords for individual mentions
+        keywords = ["ceo", "cto", "cfo", "manager", "supervisor", "lead", "head of", "director"]
+        pattern = '|'.join(keywords)
+        
+        # Count reviews that mention at least one keyword
+        mention_count = int(text_data.str.contains(pattern, case=False).sum())
+        
+        ratio = Decimal(mention_count) / Decimal(total)
+        return ratio
+
