@@ -1,8 +1,12 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Dict, List, Set, Optional
+from typing import Dict, List, Any, Set, Optional
 import math
 import re
+import structlog
+
+logger = structlog.get_logger(__name__)
+
 
 @dataclass
 class JobAnalysis:
@@ -98,8 +102,27 @@ class TalentConcentrationCalculator:
             Decimal("0.2") * skill_concentration +
             Decimal("0.1") * individual_factor
         )
-
-        return Decimal(str(max(0, min(1, tc)))).quantize(Decimal("0.0001"))
+        
+        final_tc = Decimal(str(max(0, min(1, tc)))).quantize(Decimal("0.0001"))
+        
+        logger.info(
+            "talent_concentration_calculated",
+            tc_final=float(final_tc),
+            components={
+                "leadership_ratio": float(leadership_ratio),
+                "team_size_factor": float(team_size_factor),
+                "skill_concentration": float(skill_concentration),
+                "individual_factor": float(individual_factor)
+            },
+            raw_metrics={
+                "total_ai_jobs": job_analysis.total_ai_jobs,
+                "senior_jobs": job_analysis.senior_ai_jobs,
+                "unique_skills": len(job_analysis.unique_skills),
+                "glassdoor_mentions": glassdoor_individual_mentions
+            }
+        )
+        
+        return final_tc
 
     def analyze_job_postings(self, postings: List[Dict]) -> JobAnalysis:
         """
