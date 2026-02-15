@@ -118,33 +118,66 @@ class SynergyCalculator:
 
 
 class ConfidenceCalculator:
-    """Calculates overall confidence using SEM (Standard Error of Mean)."""
+    """Calculates overall confidence using SEM (Standard Error of Measurement)."""
+
+    def calculate_sem(
+        self, 
+        values: List[Decimal], 
+        reliability_r: Decimal = Decimal("0.7")
+    ) -> Dict[str, Decimal]:
+        """
+        Calculate SEM using Spearman-Brown Prophecy Formula.
+        
+        ρ = (n * r) / (1 + (n - 1) * r)
+        SEM = σ * sqrt(1 - ρ)
+        
+        Args:
+            values: List of confidence values or scores
+            reliability_r: Inter-item correlation (Default 0.7 for high quality inputs)
+        """
+        if not values or len(values) < 2:
+            return {"sem": Decimal("0"), "rho": Decimal("1.0"), "sigma": Decimal("0")}
+
+        n = Decimal(str(len(values)))
+        
+        # 1. Calculate Rho (Spearman-Brown)
+        rho_numerator = n * reliability_r
+        rho_denominator = Decimal("1") + (n - Decimal("1")) * reliability_r
+        rho = rho_numerator / rho_denominator
+        
+        # 2. Calculate Sigma (Standard Deviation)
+        mean = sum(values) / n
+        variance = sum((x - mean)**2 for x in values) / (n - Decimal("1"))
+        sigma = variance.sqrt()
+        
+        # 3. Calculate SEM
+        sem = sigma * (Decimal("1") - rho).sqrt()
+        
+        return {
+            "sem": sem,
+            "rho": rho,
+            "sigma": sigma,
+            "n": n
+        }
 
     def calculate_overall_confidence(
         self, 
         dimension_confidences: List[Decimal]
     ) -> Decimal:
         """
-        Calculate overall confidence. 
-        In V2, we incorporate SEM to penalize high variance in confidence.
+        Final confidence score adjusted for measurement error.
+        Confidence = Mean_Conf * (1 - SEM)
         """
         if not dimension_confidences:
             return Decimal("0.0")
         
-        n = len(dimension_confidences)
-        mean_conf = sum(dimension_confidences) / n
+        stats = self.calculate_sem(dimension_confidences)
+        mean_conf = sum(dimension_confidences) / Decimal(str(len(dimension_confidences)))
         
-        if n > 1:
-            variance = sum((c - mean_conf)**2 for c in dimension_confidences) / (n - 1)
-            sem = variance.sqrt() / Decimal(str(n)).sqrt()
-            # Penalty for low consensus
-            confidence = mean_conf * (Decimal("1.0") - sem)
-        else:
-            confidence = mean_conf
-            
-        confidence = clamp(confidence, Decimal("0"), Decimal("1"))
+        # Penalty increases as SEM increases (meaning low consensus/high variance)
+        final_conf = mean_conf * (Decimal("1.0") - stats["sem"])
         
-        return to_decimal(float(confidence), places=2)
+        return clamp(final_conf, Decimal("0"), Decimal("1"))
 
 
 class OrgAIRCalculator:
@@ -165,13 +198,19 @@ class OrgAIRCalculator:
         sector: str = "default",
         alignment: Decimal = Decimal("1.0"),
         timing: Decimal = Decimal("1.0"),
+        alpha: Decimal = Decimal("0.6"), # V^R vs H^R weight
+        beta: Decimal = Decimal("0.4"),  # Base Readiness vs Synergy weight
+        z_score: Decimal = Decimal("1.96"), # 95% Confidence Interval
         company_id: Optional[str] = None,
         assessment_id: Optional[str] = None
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
-        Orchestrate the full calculation flow with complete audit trail.
+        Calculate final Org-AI-R score using weighted composite formula.
+        
+        Org-AI-R = (1 - β) * [α * V^R + (1 - α) * H^R] + β * Synergy
+        CI = score ± z * SEM
         """
-        # Bind context for all logs in this flow
+        # Bind context
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(
             company_id=company_id,
@@ -179,40 +218,53 @@ class OrgAIRCalculator:
             sector=sector
         )
         
-        # 1. Vertical Readiness
+        # 1. Component Scores
         vr_score = self.vr_calc.calculate_vr(dimension_scores, sector=sector)
-        
-        # 2. Horizontal Readiness
         hr_score = self.hr_calc.calculate_hr(hr_base, position_factor)
+        synergy_score = self.synergy_calc.calculate_synergy(vr_score, hr_score, alignment, timing)
         
-        # 3. Synergy Score
-        synergy_score = self.synergy_calc.calculate_synergy(
-            vr_score, hr_score, alignment_factor=alignment, timing_factor=timing
-        )
+        # 2. Base Readiness (Composite of V and H)
+        # Base = α * V^R + (1 - α) * H^R
+        base_readiness = (alpha * vr_score) + (Decimal("1") - alpha) * hr_score
         
-        # 4. Confidence (CI)
+        # 3. Final Org-AI-R
+        # Score = (1 - β) * Base + β * Synergy
+        final_score = (Decimal("1") - beta) * base_readiness + (beta * synergy_score)
+        
+        # 4. Stat Precision (SEM & CI)
+        # We calculate SEM based on the input dimension scores to see variance across the framework
+        sem_stats = self.conf_calc.calculate_sem(list(dimension_scores.values()))
+        sem = sem_stats["sem"]
+        ci_margin = z_score * sem
+        
+        # 5. Final Confidence Adjustment
         confidence = self.conf_calc.calculate_overall_confidence(dimension_confidences)
         
         import uuid
         audit_id = str(uuid.uuid4())
         
         result = {
-            "org_air_score": float(synergy_score),
+            "org_air_score": float(to_decimal(float(final_score), 2)),
             "v_r": float(vr_score),
             "h_r": float(hr_score),
+            "synergy": float(synergy_score),
             "confidence": float(confidence),
+            "ci_lower": float(max(Decimal("0"), final_score - ci_margin)),
+            "ci_upper": float(min(Decimal("100"), final_score + ci_margin)),
+            "sem": float(sem),
+            "reliability_rho": float(sem_stats["rho"]),
             "audit_log_id": audit_id
         }
         
         logger.info(
             "org_air_calculation_complete",
             company_score=result["org_air_score"],
-            components={
-                "V_R": result["v_r"],
-                "H_R": result["h_r"]
+            weights={"alpha": float(alpha), "beta": float(beta)},
+            precision={
+                "sem": result["sem"],
+                "rho": result["reliability_rho"],
+                "ci": [result["ci_lower"], result["ci_upper"]]
             },
-            confidence=result["confidence"],
-            evidence_n=len(dimension_confidences),
             audit_id=audit_id
         )
         
