@@ -47,3 +47,39 @@ class TestPositionFactorCalculator(unittest.TestCase):
         )
         self.assertLess(float(pf), 0.0)
         self.assertGreater(float(pf), -1.0)
+
+        def test_upper_bound(self):
+        """Test that PF is bounded to maximum of 1.0."""
+        pf = self.calc.calculate_position_factor(
+            vr_score=100.0,
+            sector='technology',
+            market_cap_percentile=1.0,
+        )
+        self.assertLessEqual(float(pf), 1.0)
+
+    def test_lower_bound(self):
+        """Test that PF is bounded to minimum of -1.0."""
+        pf = self.calc.calculate_position_factor(
+            vr_score=0.0,
+            sector='technology',
+            market_cap_percentile=0.0,
+        )
+        self.assertGreaterEqual(float(pf), -1.0)
+
+    def test_vr_component_clamping_high(self):
+        """Test that VR component is properly clamped at 1.0."""
+        pf = self.calc.calculate_position_factor(
+            vr_score=150.0,
+            sector='technology',
+            market_cap_percentile=0.5,
+        )
+        self.assertAlmostEqual(float(pf), 0.6, places=2)
+
+    def test_vr_component_clamping_low(self):
+        """Test that VR component is properly clamped at -1.0."""
+        pf = self.calc.calculate_position_factor(
+            vr_score=-50.0,
+            sector='technology',
+            market_cap_percentile=0.5,
+        )
+        self.assertAlmostEqual(float(pf), -0.6, places=2)
