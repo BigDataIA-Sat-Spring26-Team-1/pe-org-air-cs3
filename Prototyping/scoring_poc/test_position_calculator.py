@@ -17,3 +17,33 @@ class TestPositionFactorCalculator(unittest.TestCase):
             market_cap_percentile=0.75,
         )
         self.assertAlmostEqual(float(pf), 0.32, places=2)
+
+
+        def test_nvidia_leader(self):
+        """Test NVIDIA as industry leader - high PF expected."""
+        pf = self.calc.calculate_position_factor(
+            vr_score=92.0,
+            sector='technology',
+            market_cap_percentile=0.95,
+        )
+        self.assertGreater(float(pf), 0.6)
+        self.assertLess(float(pf), 1.0)
+
+    def test_average_position(self):
+        """Test company with average position - PF should be near 0."""
+        pf = self.calc.calculate_position_factor(
+            vr_score=45.0,
+            sector='manufacturing',
+            market_cap_percentile=0.5,
+        )
+        self.assertAlmostEqual(float(pf), 0.0, places=2)
+
+    def test_laggard_position(self):
+        """Test company lagging in sector - negative PF expected."""
+        pf = self.calc.calculate_position_factor(
+            vr_score=35.0,
+            sector='retail',
+            market_cap_percentile=0.2
+        )
+        self.assertLess(float(pf), 0.0)
+        self.assertGreater(float(pf), -1.0)
