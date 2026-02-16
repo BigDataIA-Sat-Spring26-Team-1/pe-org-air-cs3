@@ -83,3 +83,53 @@ class TestPositionFactorCalculator(unittest.TestCase):
             market_cap_percentile=0.5,
         )
         self.assertAlmostEqual(float(pf), -0.6, places=2)
+
+        def test_different_sectors(self):
+        """Test calculation works correctly for different sectors."""
+        sectors_to_test = [
+            'technology',
+            'financial_services',
+            'healthcare',
+            'retail',
+            'manufacturing'
+        ]
+
+        for sector in sectors_to_test:
+            pf = self.calc.calculate_position_factor(
+                vr_score=60.0,
+                sector=sector,
+                market_cap_percentile=0.6
+            )
+            self.assertIsInstance(pf, Decimal)
+            self.assertGreaterEqual(float(pf), -1.0)
+            self.assertLessEqual(float(pf), 1.0)
+
+    def test_unknown_sector_default(self):
+        """Test that unknown sectors use default average of 50.0."""
+        pf = self.calc.calculate_position_factor(
+            vr_score=60.0,
+            sector='unknown_sector',
+            market_cap_percentile=0.5
+        )
+        self.assertAlmostEqual(float(pf), 0.12, places=2)
+
+    def test_return_type(self):
+        """Test that return type is Decimal."""
+        pf = self.calc.calculate_position_factor(
+            vr_score=70.0,
+            sector='technology',
+            market_cap_percentile=0.7
+        )
+        self.assertIsInstance(pf, Decimal)
+
+    def test_precision(self):
+        """Test that results are rounded to 2 decimal places."""
+        pf = self.calc.calculate_position_factor(
+            vr_score=73.333,
+            sector='technology',
+            market_cap_percentile=0.777
+        )
+        pf_str = str(pf)
+        if '.' in pf_str:
+            decimal_places = len(pf_str.split('.')[1])
+            self.assertLessEqual(decimal_places, 2)
