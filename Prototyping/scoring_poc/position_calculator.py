@@ -48,3 +48,13 @@ class PositionFactorCalculator:
         # Calculate VR component
         vr_diff = vr_score - sector_avg
         vr_component = max(-1, min(1, vr_diff / 50))
+
+        # Calculate market cap component
+        mcap_component = (market_cap_percentile - 0.5) * 2
+
+        # Weighted combination
+        pf = 0.6 * vr_component + 0.4 * mcap_component
+
+        # Bound to [-1, 1] and return as Decimal
+        pf_bounded = max(-1, min(1, pf))
+        return Decimal(str(round(pf_bounded, 2)))
