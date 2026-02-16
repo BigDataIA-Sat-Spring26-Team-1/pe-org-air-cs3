@@ -42,4 +42,9 @@ class PositionFactorCalculator:
         Returns:
             Position factor in [-1, 1]
         """
-        pass
+        # Get sector average V^R
+        sector_avg = self.SECTOR_AVG_VR.get(sector.lower(), 50.0)
+
+        # Calculate VR component
+        vr_diff = vr_score - sector_avg
+        vr_component = max(-1, min(1, vr_diff / 50))
