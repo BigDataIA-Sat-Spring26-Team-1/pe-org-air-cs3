@@ -24,3 +24,22 @@ class PositionFactorCalculator:
         "retail": 48.0,
         "manufacturing": 45.0,
     }
+
+    def calculate_position_factor(
+        self,
+        vr_score: float,
+        sector: str,
+        market_cap_percentile: float,  # 0.0 = smallest, 1.0 = largest in sector
+    ) -> Decimal:
+        """
+        Calculate position factor from V^R and market cap.
+
+        Args:
+            vr_score: Company's V^R score (0-100)
+            sector: Company sector
+            market_cap_percentile: Position in sector by market cap (0-1)
+
+        Returns:
+            Position factor in [-1, 1]
+        """
+        pass
