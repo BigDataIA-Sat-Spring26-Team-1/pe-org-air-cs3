@@ -30,4 +30,33 @@ WHEN NOT MATCHED THEN INSERT (
     source.ceo_rating, source.business_outlook, source.raw_json
 )
 """
-  
+
+INSERT_CULTURE_SIGNAL = """
+MERGE INTO culture_scores AS target
+USING (SELECT 
+    %s AS company_id, %s AS ticker, %s AS batch_date, 
+    %s AS innovation_score, %s AS data_driven_score, %s AS ai_awareness_score, 
+    %s AS change_readiness_score, %s AS overall_sentiment, %s AS review_count, 
+    %s AS confidence_score
+) AS source
+ON target.company_id = source.company_id AND target.batch_date = source.batch_date
+WHEN MATCHED THEN UPDATE SET
+    ticker = source.ticker,
+    innovation_score = source.innovation_score,
+    data_driven_score = source.data_driven_score,
+    ai_awareness_score = source.ai_awareness_score,
+    change_readiness_score = source.change_readiness_score,
+    overall_sentiment = source.overall_sentiment,
+    review_count = source.review_count,
+    confidence_score = source.confidence_score,
+    updated_at = CURRENT_TIMESTAMP
+WHEN NOT MATCHED THEN INSERT (
+    company_id, ticker, batch_date, innovation_score, data_driven_score, 
+    ai_awareness_score, change_readiness_score, overall_sentiment, 
+    review_count, confidence_score, created_at, updated_at
+) VALUES (
+    source.company_id, source.ticker, source.batch_date, source.innovation_score, source.data_driven_score, 
+    source.ai_awareness_score, source.change_readiness_score, source.overall_sentiment, 
+    source.review_count, source.confidence_score, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+)
+"""
