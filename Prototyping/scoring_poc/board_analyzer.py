@@ -169,3 +169,36 @@ def analyze_board(
 
         if has_tech:
             score += self.SCORE_TECH_COMMITTEE
+
+
+# Check for AI expertise on board
+        ai_experts = []
+        for member in members:
+            # Check both bio and title with all AI expertise patterns
+            has_match = any(
+                re.search(pattern, member.bio, re.IGNORECASE) or 
+                re.search(pattern, member.title, re.IGNORECASE)
+                for pattern in self.AI_EXPERTISE_PATTERNS
+            )
+            
+            if has_match:
+                ai_experts.append(member.name)
+
+        has_ai_expertise = len(ai_experts) > 0
+        if has_ai_expertise:
+            score += self.SCORE_AI_EXPERTISE
+
+        # Check for data officer role
+        has_data_officer = False
+        for member in members:
+            has_match = any(
+                re.search(pattern, member.title, re.IGNORECASE) or
+                re.search(pattern, member.bio, re.IGNORECASE)
+                for pattern in self.DATA_OFFICER_PATTERNS
+            )
+            if has_match:
+                has_data_officer = True
+                break
+
+        if has_data_officer:
+            score += self.SCORE_DATA_OFFICER
