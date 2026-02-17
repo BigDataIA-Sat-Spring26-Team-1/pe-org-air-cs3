@@ -1,3 +1,5 @@
+# Prototyping/scoring_poc/test_board_analyzer.py
+
 import unittest
 from decimal import Decimal
 from unittest.mock import patch, Mock, MagicMock
@@ -34,7 +36,6 @@ class TestBoardCompositionAnalyzer(unittest.TestCase):
         self.assertEqual(signal.company_id, "test-123")
         self.assertEqual(signal.ticker, "TEST")
 
-
     def test_tech_committee_scoring(self):
         """Test +15 points for technology committee."""
         test_cases = [
@@ -66,8 +67,7 @@ class TestBoardCompositionAnalyzer(unittest.TestCase):
                 )
                 self.assertEqual(signal.has_tech_committee, should_score)
 
-
-                def test_ai_expertise_in_bio_only(self):
+    def test_ai_expertise_in_bio_only(self):
         """Test +20 points for AI expertise in bio."""
         test_cases = [
             ("Director", "artificial intelligence expert", True, 50),
@@ -167,7 +167,7 @@ class TestBoardCompositionAnalyzer(unittest.TestCase):
         self.assertNotIn("Carol", signal.ai_experts)
         self.assertEqual(signal.governance_score, Decimal("50"))
 
-        def test_data_officer_in_bio(self):
+    def test_data_officer_in_bio(self):
         """Test data officer detection in bio text."""
         signal = self.analyzer.analyze_board(
             company_id="test-123",
@@ -225,8 +225,6 @@ class TestBoardCompositionAnalyzer(unittest.TestCase):
                 
                 expected_ratio = Decimal(indep_count) / Decimal(total_count)
                 self.assertEqual(signal.independent_ratio, expected_ratio)
-
-
 
     def test_risk_tech_oversight_scoring(self):
         """Test +10 points for risk committee with tech oversight."""
@@ -303,3 +301,123 @@ class TestBoardCompositionAnalyzer(unittest.TestCase):
 
         self.assertEqual(signal.governance_score, Decimal("100"))
         self.assertLessEqual(signal.governance_score, Decimal("100"))
+
+    def test_comprehensive_scoring(self):
+        """Test a realistic comprehensive scenario."""
+        members = [
+            BoardMember(
+                name="Sarah Johnson",
+                title="Executive",
+                bio="expertise in machine learning and AI",
+                is_independent=False,
+                tenure_years=3,
+                committees=["Technology Committee"]
+            ),
+            BoardMember(
+                name="Michael Chen",
+                title="Independent Director",
+                bio="20 years in digital transformation",
+                is_independent=True,
+                tenure_years=5,
+                committees=["Risk and Technology Committee"]
+            ),
+            BoardMember(
+                name="Emily Davis",
+                title="Independent Director",
+                bio="Former CEO",
+                is_independent=True,
+                tenure_years=2,
+                committees=["Audit Committee"]
+            ),
+            BoardMember(
+                name="Robert Wilson",
+                title="Chief Data Officer",
+                bio="",
+                is_independent=False,
+                tenure_years=1,
+                committees=[]
+            ),
+        ]
+
+        committees = [
+            "Technology Committee",
+            "Risk and Technology Committee",
+            "Audit Committee",
+            "Compensation Committee"
+        ]
+
+        strategy_text = """
+        Our strategic priorities include investing in artificial intelligence
+        and machine learning capabilities to drive innovation and efficiency.
+        """
+
+        signal = self.analyzer.analyze_board(
+            company_id="comp-456",
+            ticker="TECH",
+            members=members,
+            committees=committees,
+            strategy_text=strategy_text
+        )
+
+        self.assertEqual(signal.governance_score, Decimal("90"))
+        self.assertTrue(signal.has_tech_committee)
+        self.assertTrue(signal.has_ai_expertise)
+        self.assertTrue(signal.has_data_officer)
+        self.assertTrue(signal.has_risk_tech_oversight)
+        self.assertTrue(signal.has_ai_in_strategy)
+
+    def test_confidence_calculation(self):
+        """Test confidence score based on data completeness."""
+        signal_minimal = self.analyzer.analyze_board(
+            company_id="test-123",
+            ticker="TEST",
+            members=[],
+            committees=[],
+            strategy_text=""
+        )
+        self.assertGreaterEqual(signal_minimal.confidence, Decimal("0.5"))
+        self.assertLessEqual(signal_minimal.confidence, Decimal("0.95"))
+
+        signal_complete = self.analyzer.analyze_board(
+            company_id="test-123",
+            ticker="TEST",
+            members=[
+                BoardMember("John", "Director", "tech expert", True, 5, ["Tech Committee"])
+            ],
+            committees=["Tech Committee"],
+            strategy_text="AI strategy"
+        )
+        self.assertGreater(signal_complete.confidence, signal_minimal.confidence)
+        self.assertLessEqual(signal_complete.confidence, Decimal("0.95"))
+
+    def test_edge_case_empty_inputs(self):
+        """Test handling of empty inputs."""
+        signal = self.analyzer.analyze_board(
+            company_id="",
+            ticker="",
+            members=[],
+            committees=[],
+            strategy_text=""
+        )
+
+        self.assertEqual(signal.governance_score, Decimal("20"))
+        self.assertEqual(signal.independent_ratio, Decimal("0"))
+        self.assertEqual(signal.tech_expertise_count, 0)
+
+
+def run_tests():
+    loader = unittest.TestLoader()
+    suite = loader.loadTestsFromTestCase(TestBoardCompositionAnalyzer)
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(suite)
+    return result
+
+
+if __name__ == '__main__':
+    result = run_tests()
+
+    print()
+    print(f"Tests run: {result.testsRun}")
+    print(f"Failures: {len(result.failures)}")
+    print(f"Errors: {len(result.errors)}")
+    print(f"Success rate: {((result.testsRun - len(result.failures) - len(result.errors)) / result.testsRun * 100):.1f}%")
