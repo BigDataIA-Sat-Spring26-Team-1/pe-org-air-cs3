@@ -65,3 +65,104 @@ class TestBoardCompositionAnalyzer(unittest.TestCase):
                     f"Committee '{committee_name}' should {'add' if should_score else 'not add'} points"
                 )
                 self.assertEqual(signal.has_tech_committee, should_score)
+
+
+                def test_ai_expertise_in_bio_only(self):
+        """Test +20 points for AI expertise in bio."""
+        test_cases = [
+            ("Director", "artificial intelligence expert", True, 50),
+            ("Director", "machine learning background", True, 50),
+            ("Director", "data science PhD", True, 50),
+            ("Director", "digital transformation leader", True, 50),
+            ("Director", "general business experience", True, 30),
+            ("Director", "artificial intelligence expert", False, 40),
+            ("Director", "general business experience", False, 20),
+        ]
+
+        for title, bio, is_independent, expected in test_cases:
+            with self.subTest(bio=bio[:30], independent=is_independent):
+                signal = self.analyzer.analyze_board(
+                    company_id="test-123",
+                    ticker="TEST",
+                    members=[
+                        BoardMember(
+                            name="Jane Smith",
+                            title=title,
+                            bio=bio,
+                            is_independent=is_independent,
+                            tenure_years=3,
+                            committees=[]
+                        )
+                    ],
+                    committees=[],
+                    strategy_text=""
+                )
+
+                self.assertEqual(signal.governance_score, Decimal(str(expected)))
+
+    def test_ai_expertise_and_data_officer_overlap(self):
+        """Test that CDO/CTO titles trigger BOTH AI expertise AND data officer."""
+        signal = self.analyzer.analyze_board(
+            company_id="test-123",
+            ticker="TEST",
+            members=[
+                BoardMember(
+                    name="Jane Smith",
+                    title="Chief Data Officer",
+                    bio="",
+                    is_independent=False,
+                    tenure_years=3,
+                    committees=[]
+                )
+            ],
+            committees=[],
+            strategy_text=""
+        )
+
+        self.assertEqual(signal.governance_score, Decimal("55"))
+        self.assertTrue(signal.has_ai_expertise)
+        self.assertTrue(signal.has_data_officer)
+
+    def test_cto_triggers_ai_only(self):
+        """Test that CTO triggers AI expertise."""
+        signal = self.analyzer.analyze_board(
+            company_id="test-123",
+            ticker="TEST",
+            members=[
+                BoardMember(
+                    name="Bob Smith",
+                    title="Chief Technology Officer",
+                    bio="",
+                    is_independent=False,
+                    tenure_years=5,
+                    committees=[]
+                )
+            ],
+            committees=[],
+            strategy_text=""
+        )
+
+        self.assertEqual(signal.governance_score, Decimal("40"))
+        self.assertTrue(signal.has_ai_expertise)
+
+    def test_multiple_ai_experts(self):
+        """Test that multiple AI experts are tracked."""
+        members = [
+            BoardMember("Alice", "Director", "chief technology experience", True, 5, []),
+            BoardMember("Bob", "Director", "machine learning expert", True, 3, []),
+            BoardMember("Carol", "Director", "business experience", True, 7, []),
+        ]
+
+        signal = self.analyzer.analyze_board(
+            company_id="test-123",
+            ticker="TEST",
+            members=members,
+            committees=[],
+            strategy_text=""
+        )
+
+        self.assertEqual(signal.tech_expertise_count, 2)
+        self.assertIn("Alice", signal.ai_experts)
+        self.assertIn("Bob", signal.ai_experts)
+        self.assertNotIn("Carol", signal.ai_experts)
+        self.assertEqual(signal.governance_score, Decimal("50"))
