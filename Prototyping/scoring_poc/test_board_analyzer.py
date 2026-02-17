@@ -33,3 +33,35 @@ class TestBoardCompositionAnalyzer(unittest.TestCase):
         self.assertEqual(signal.governance_score, Decimal("20"))
         self.assertEqual(signal.company_id, "test-123")
         self.assertEqual(signal.ticker, "TEST")
+
+
+    def test_tech_committee_scoring(self):
+        """Test +15 points for technology committee."""
+        test_cases = [
+            ("Technology Committee", True),
+            ("Digital Committee", True),
+            ("Innovation Committee", True),
+            ("IT Committee", True),
+            ("Technology and Cybersecurity Committee", True),
+            ("TECHNOLOGY COMMITTEE", True),
+            ("Audit Committee", False),
+            ("Compensation Committee", False),
+        ]
+
+        for committee_name, should_score in test_cases:
+            with self.subTest(committee=committee_name):
+                signal = self.analyzer.analyze_board(
+                    company_id="test-123",
+                    ticker="TEST",
+                    members=[],
+                    committees=[committee_name],
+                    strategy_text=""
+                )
+
+                expected_score = Decimal("35") if should_score else Decimal("20")
+                self.assertEqual(
+                    signal.governance_score,
+                    expected_score,
+                    f"Committee '{committee_name}' should {'add' if should_score else 'not add'} points"
+                )
+                self.assertEqual(signal.has_tech_committee, should_score)
