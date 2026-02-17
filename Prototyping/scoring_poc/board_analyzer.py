@@ -281,3 +281,92 @@ class BoardCompositionAnalyzer:
             ai_experts=ai_experts,
             relevant_committees=relevant_committees
         )
+    
+    def _calculate_tenure(self, date_str: str) -> int:
+        """
+        Parses 'dateFirstElected' (e.g., 'July 2021' or '2015') 
+        and calculates years of tenure.
+        """
+        if not date_str:
+            return 0
+
+        # Extract 4 digit year using regex
+        match = re.search(r'\d{4}', str(date_str))
+        if match:
+            start_year = int(match.group())
+            current_year = datetime.datetime.now().year
+            return max(0, current_year - start_year)
+        return 0
+
+    def fetch_board_data(self, ticker: str) -> Tuple[List[BoardMember], List[str]]:
+        """
+        Fetches board data from sec-api.io using httpx and maps to BoardMember.
+        """
+        payload = {
+            "query": f"ticker:{ticker}",
+            "from": 0,
+            "size": 1, 
+            "sort": [{ "filedAt": { "order": "desc" } }]
+        }
+
+        headers = {
+            "Authorization": self.SEC_API_KEY,
+            "Content-Type": "application/json"
+        }
+
+        print(f"Fetching board data for {ticker}...")
+
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                response = client.post(
+                    self.SEC_ENDPOINT, 
+                    json=payload, 
+                    headers=headers
+                )
+                response.raise_for_status()
+                data = response.json()
+
+            if not data.get('data') or len(data['data']) == 0:
+                print(f"No data found for ticker {ticker}")
+                return [], []
+
+            latest_filing = data['data'][0]
+            api_directors = latest_filing.get('directors', [])
+            
+            board_members = []
+            all_committees = set()
+
+            for d in api_directors:
+                name = d.get('name', 'Unknown')
+                title = d.get('position', '') or ""
+                
+                tenure_years = self._calculate_tenure(d.get('dateFirstElected'))
+
+                is_independent = bool(d.get('isIndependent'))
+
+                qualifications = d.get('qualificationsAndExperience', [])
+                bio_text = ", ".join(qualifications) if qualifications else ""
+                
+                committees_data = d.get('committeeMemberships', [])
+                clean_committees = []
+                for c in committees_data:
+                    c_name = c if isinstance(c, str) else c.get('name', '')
+                    if c_name:
+                        clean_committees.append(c_name)
+                        all_committees.add(c_name)
+
+                member = BoardMember(
+                    name=name,
+                    title=title,
+                    bio=bio_text,
+                    is_independent=is_independent,
+                    tenure_years=tenure_years,
+                    committees=clean_committees
+                )
+                board_members.append(member)
+
+            return board_members, list(all_committees)
+
+        except Exception as e:
+            print(f"Error fetching data: {e}")
+            return [], []
