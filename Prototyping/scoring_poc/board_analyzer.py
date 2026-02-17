@@ -202,3 +202,37 @@ def analyze_board(
 
         if has_data_officer:
             score += self.SCORE_DATA_OFFICER
+
+independent_count = sum(1 for member in members if member.is_independent)
+        total_directors = len(members)
+
+        independent_ratio = Decimal("0")
+        if total_directors > 0:
+            independent_ratio = Decimal(independent_count) / Decimal(total_directors)
+            if independent_ratio > Decimal("0.5"):
+                score += self.SCORE_INDEPENDENT_RATIO
+
+        # Check risk committee oversight
+        has_risk_tech_oversight = False
+        for c in committees:
+            if "risk" in c.lower():
+                for pattern in self.RISK_TECH_PATTERNS:
+                    if re.search(pattern, c, re.IGNORECASE):
+                        has_risk_tech_oversight = True
+                        if c not in relevant_committees:
+                            relevant_committees.append(c)
+                        break
+
+        if has_risk_tech_oversight:
+            score += self.SCORE_RISK_OVERSIGHT
+
+        # Check AI in strategy
+        has_ai_in_strategy = False
+        if strategy_text:
+            has_ai_in_strategy = any(
+                re.search(pattern, strategy_text, re.IGNORECASE)
+                for pattern in self.AI_STRATEGY_PATTERNS
+            )
+
+            if has_ai_in_strategy:
+                score += self.SCORE_STRATEGIC_PRIORITY
