@@ -1,3 +1,5 @@
+# Prototyping/scoring_poc/board_analyzer.py
+
 import re
 import httpx
 import datetime
@@ -43,7 +45,8 @@ class GovernanceSignal:
     ai_experts: List[str] = field(default_factory=list)
     relevant_committees: List[str] = field(default_factory=list)
 
-    class BoardCompositionAnalyzer:
+
+class BoardCompositionAnalyzer:
     """
     Analyze board composition for AI governance indicators.
     
@@ -133,8 +136,7 @@ class GovernanceSignal:
     def __init__(self):
         self.confidence = None
 
-
-def analyze_board(
+    def analyze_board(
         self,
         company_id: str,
         ticker: str,
@@ -170,8 +172,7 @@ def analyze_board(
         if has_tech:
             score += self.SCORE_TECH_COMMITTEE
 
-
-# Check for AI expertise on board
+        # Check for AI expertise on board
         ai_experts = []
         for member in members:
             # Check both bio and title with all AI expertise patterns
@@ -203,7 +204,8 @@ def analyze_board(
         if has_data_officer:
             score += self.SCORE_DATA_OFFICER
 
-independent_count = sum(1 for member in members if member.is_independent)
+        # Check independent ratio
+        independent_count = sum(1 for member in members if member.is_independent)
         total_directors = len(members)
 
         independent_ratio = Decimal("0")
@@ -237,8 +239,7 @@ independent_count = sum(1 for member in members if member.is_independent)
             if has_ai_in_strategy:
                 score += self.SCORE_STRATEGIC_PRIORITY
 
-
-                # Cap at 100
+        # Cap at 100
         score = min(score, self.MAX_SCORE)
 
         # Calculate confidence based on data completeness
@@ -280,5 +281,3 @@ independent_count = sum(1 for member in members if member.is_independent)
             ai_experts=ai_experts,
             relevant_committees=relevant_committees
         )
-
-
