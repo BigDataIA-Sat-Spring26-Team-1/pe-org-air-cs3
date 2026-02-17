@@ -166,3 +166,62 @@ class TestBoardCompositionAnalyzer(unittest.TestCase):
         self.assertIn("Bob", signal.ai_experts)
         self.assertNotIn("Carol", signal.ai_experts)
         self.assertEqual(signal.governance_score, Decimal("50"))
+
+        def test_data_officer_in_bio(self):
+        """Test data officer detection in bio text."""
+        signal = self.analyzer.analyze_board(
+            company_id="test-123",
+            ticker="TEST",
+            members=[
+                BoardMember(
+                    name="Jane Doe",
+                    title="Board Member",
+                    bio="Previously served as Chief Data Officer at TechCorp",
+                    is_independent=True,
+                    tenure_years=3,
+                    committees=[]
+                )
+            ],
+            committees=[],
+            strategy_text=""
+        )
+
+        self.assertTrue(signal.has_data_officer)
+        self.assertEqual(signal.governance_score, Decimal("65"))
+
+    def test_independent_ratio_scoring(self):
+        """Test +10 points for independent ratio > 0.5."""
+        test_cases = [
+            (3, 5, True, 30),
+            (2, 3, True, 30),
+            (1, 2, False, 20),
+            (2, 5, False, 20),
+            (0, 5, False, 20),
+        ]
+
+        for indep_count, total_count, should_score, expected_score in test_cases:
+            with self.subTest(independent=indep_count, total=total_count):
+                members = [
+                    BoardMember(
+                        name=f"Member {i}",
+                        title="Director",
+                        bio="",
+                        is_independent=(i < indep_count),
+                        tenure_years=5,
+                        committees=[]
+                    )
+                    for i in range(total_count)
+                ]
+
+                signal = self.analyzer.analyze_board(
+                    company_id="test-123",
+                    ticker="TEST",
+                    members=members,
+                    committees=[],
+                    strategy_text=""
+                )
+
+                self.assertEqual(signal.governance_score, Decimal(str(expected_score)))
+                
+                expected_ratio = Decimal(indep_count) / Decimal(total_count)
+                self.assertEqual(signal.independent_ratio, expected_ratio)
