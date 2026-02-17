@@ -225,3 +225,81 @@ class TestBoardCompositionAnalyzer(unittest.TestCase):
                 
                 expected_ratio = Decimal(indep_count) / Decimal(total_count)
                 self.assertEqual(signal.independent_ratio, expected_ratio)
+
+
+
+    def test_risk_tech_oversight_scoring(self):
+        """Test +10 points for risk committee with tech oversight."""
+        test_cases = [
+            ("Risk and Technology Committee", 45),
+            ("Technology and Risk Committee", 45),
+            ("Risk and Cybersecurity Committee", 30),
+            ("Risk and Digital Committee", 45),
+            ("Risk and IT Committee", 45),
+            ("Risk Committee", 20),
+            ("Technology Committee", 35),
+            ("Audit Committee", 20),
+        ]
+
+        for committee_name, expected_score in test_cases:
+            with self.subTest(committee=committee_name):
+                signal = self.analyzer.analyze_board(
+                    company_id="test-123",
+                    ticker="TEST",
+                    members=[],
+                    committees=[committee_name],
+                    strategy_text=""
+                )
+                    
+                self.assertEqual(signal.governance_score, Decimal(str(expected_score)),
+                    f"{committee_name} should score {expected_score}")
+
+    def test_ai_strategy_scoring(self):
+        """Test +10 points for AI in strategic priorities."""
+        test_cases = [
+            ("Our strategy focuses on artificial intelligence", True),
+            ("We are investing in machine learning", True),
+            ("Our AI strategy includes generative AI", True),
+            ("AI transformation is a priority", True),
+            ("Developing AI models for customers", True),
+            ("Traditional business model", False),
+            ("", False),
+        ]
+
+        for strategy_text, should_score in test_cases:
+            with self.subTest(strategy=strategy_text[:50]):
+                signal = self.analyzer.analyze_board(
+                    company_id="test-123",
+                    ticker="TEST",
+                    members=[],
+                    committees=[],
+                    strategy_text=strategy_text
+                )
+
+                expected_score = Decimal("30") if should_score else Decimal("20")
+                self.assertEqual(signal.governance_score, expected_score)
+                self.assertEqual(signal.has_ai_in_strategy, should_score)
+
+    def test_maximum_score(self):
+        """Test that score caps at 100."""
+        members = [
+            BoardMember("Alice", "Chief AI Officer", "artificial intelligence expert", True, 5, []),
+            BoardMember("Bob", "Director", "machine learning background", True, 3, []),
+            BoardMember("Carol", "Director", "data science PhD", True, 7, []),
+        ]
+
+        committees = [
+            "Technology Committee",
+            "Risk and Cybersecurity Committee"
+        ]
+
+        signal = self.analyzer.analyze_board(
+            company_id="test-123",
+            ticker="TEST",
+            members=members,
+            committees=committees,
+            strategy_text="Our AI strategy focuses on artificial intelligence and machine learning"
+        )
+
+        self.assertEqual(signal.governance_score, Decimal("100"))
+        self.assertLessEqual(signal.governance_score, Decimal("100"))
