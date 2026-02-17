@@ -101,8 +101,8 @@ class GlassdoorCollector:
             return ""
             
         date_str = datetime.now().strftime("%Y-%m-%d")
-        timestamp = datetime.now().strftime("%H%M%S")
-        s3_key = f"raw/glassdoor/{ticker}/{date_str}_{timestamp}.json"
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        s3_key = f"raw/glassdoor/{ticker}/{date_str}.json"
         
         success = aws_service.upload_bytes(
             data=json.dumps(reviews).encode('utf-8'),
@@ -276,16 +276,12 @@ class GlassdoorCollector:
     async def run_pipeline(self, ticker: str, limit: int = 20):
         # 0. Check S3 for existing data for today
         date_str = datetime.now().strftime("%Y-%m-%d")
-        s3_prefix = f"raw/glassdoor/{ticker}/{date_str}"
+        s3_key = f"raw/glassdoor/{ticker}/{date_str}.json"
         
-        existing_files = aws_service.list_files(s3_prefix)
         raw_reviews = None
-        
-        if existing_files:
-            # Pick the most recent one (lexicographically last usually works due to timestamp)
-            latest_file = sorted(existing_files)[-1]
-            logger.info(f"Found existing raw data for {ticker} in S3: {latest_file}")
-            raw_reviews = aws_service.read_json(latest_file)
+        if aws_service.file_exists(s3_key):
+            logger.info(f"Found existing raw data for {ticker} in S3: {s3_key}")
+            raw_reviews = aws_service.read_json(s3_key)
 
         if not raw_reviews:
             # 1. Fetch
