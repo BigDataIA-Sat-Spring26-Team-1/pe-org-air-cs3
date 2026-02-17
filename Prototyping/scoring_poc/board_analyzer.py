@@ -68,3 +68,67 @@ class GovernanceSignal:
     SCORE_INDEPENDENT_RATIO = Decimal("10")
     SCORE_RISK_OVERSIGHT = Decimal("10")
     SCORE_STRATEGIC_PRIORITY = Decimal("10")
+
+    # AI expertise patterns
+    AI_EXPERTISE_PATTERNS = [
+        r'\bartificial\s+intelligence\b',
+        r'\bmachine\s+learning\b',
+        r'\bchief\s+data\s+officer\b',
+        r'\bCDO\b',
+        r'\bCAIO\b',
+        r'\bchief\s+ai\b',
+        r'\bchief\s+technology\b',
+        r'\bCTO\b',
+        r'\bchief\s+digital\b',
+        r'\bdata\s+science\b',
+        r'\banalytics\b',
+        r'\bdigital\s+transformation\b',
+    ]
+
+    # Tech committee patterns
+    TECH_COMMITTEE_PATTERNS = [
+        r'\btechnology\s+committee\b',
+        r'\btechnology\s+and\s+\w+\s+committee\b',
+        r'\bdigital\s+(strategy\s+)?committee\b',
+        r'\binnovation\s+committee\b',
+        r'\bIT\s+committee\b',
+        r'\btechnology\s+and\s+cybersecurity\b',
+        r'\binformation\s+technology\s+committee\b',
+    ]
+
+    # Data officer patterns
+    DATA_OFFICER_PATTERNS = [
+        r'\bchief\s+data\s+officer\b',
+        r'\bCDO\b',
+        r'\bchief\s+ai\s+officer\b',
+        r'\bCAIO\b',
+        r'\bchief\s+analytics\s+officer\b',
+        r'\bCAO\b',
+        r'\bchief\s+digital\s+officer\b',
+    ]
+
+    # AI strategy patterns
+    AI_STRATEGY_PATTERNS = [
+        r'\bartificial\s+intelligence\b',
+        r'\bmachine\s+learning\b',
+        r'\bai\s+strategy\b',
+        r'\bai\s+initiative',
+        r'\bai\s+transformation\b',
+        r'\bgenerative\s+ai\b',
+        r'\bai\s+model'
+    ]
+
+    # Risk+tech patterns
+    RISK_TECH_PATTERNS = [
+        r'\btechnology\b',
+        r'\bcyber(security)?\b',
+        r'\bdigital\b',
+        r'\bIT\b',
+        r'\binformation\s+technology\b',
+    ]
+
+    SEC_API_KEY = "0c6b6b0df58cba77bb714d703df6468482e29b67b343728ce00048f3eac7390c"
+    SEC_ENDPOINT = "https://api.sec-api.io/directors-and-board-members"
+
+    def __init__(self):
+        self.confidence = None
