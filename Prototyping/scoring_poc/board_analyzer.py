@@ -132,3 +132,40 @@ class GovernanceSignal:
 
     def __init__(self):
         self.confidence = None
+
+
+def analyze_board(
+        self,
+        company_id: str,
+        ticker: str,
+        members: List[BoardMember],
+        committees: List[str],
+        strategy_text: str = "",
+    ) -> GovernanceSignal:
+        """
+        Analyze board for AI governance strength.
+        
+        Args:
+            company_id: Company UUID
+            ticker: Stock ticker
+            members: List of board members and executives
+            committees: List of committee names
+            strategy_text: Text from annual report strategy section
+        
+        Returns:
+            GovernanceSignal with governance score
+        """
+        score = self.BASE_SCORE
+
+        # Check for tech committee
+        relevant_committees = []
+        has_tech = False
+        for c in committees:
+            for pattern in self.TECH_COMMITTEE_PATTERNS:
+                if re.search(pattern, c, re.IGNORECASE):
+                    has_tech = True
+                    relevant_committees.append(c)
+                    break
+
+        if has_tech:
+            score += self.SCORE_TECH_COMMITTEE
