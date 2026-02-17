@@ -236,3 +236,49 @@ independent_count = sum(1 for member in members if member.is_independent)
 
             if has_ai_in_strategy:
                 score += self.SCORE_STRATEGIC_PRIORITY
+
+
+                # Cap at 100
+        score = min(score, self.MAX_SCORE)
+
+        # Calculate confidence based on data completeness
+        data_points = 0
+        total_possible = 6
+
+        if committees:
+            data_points += 1
+        if members:
+            data_points += 1
+        if any(member.bio for member in members):
+            data_points += 1
+        if strategy_text:
+            data_points += 1
+        if total_directors > 0:
+            data_points += 1
+        if any(member.committees for member in members):
+            data_points += 1
+        
+        confidence = min(
+            Decimal("0.5") + Decimal(data_points) / Decimal(total_possible * 2),
+            Decimal("0.95")
+        )
+        
+        self.confidence = confidence
+        
+        return GovernanceSignal(
+            company_id=company_id,
+            ticker=ticker,
+            has_tech_committee=has_tech,
+            has_ai_expertise=has_ai_expertise,
+            has_data_officer=has_data_officer,
+            has_risk_tech_oversight=has_risk_tech_oversight,
+            has_ai_in_strategy=has_ai_in_strategy,
+            tech_expertise_count=len(ai_experts),
+            independent_ratio=independent_ratio,
+            governance_score=score,
+            confidence=confidence,
+            ai_experts=ai_experts,
+            relevant_committees=relevant_committees
+        )
+
+
