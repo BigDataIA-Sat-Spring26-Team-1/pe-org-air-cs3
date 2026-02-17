@@ -11,21 +11,172 @@ from app.services.snowflake import db
 from app.pipelines.glassdoor.glassdoor_queries import MERGE_GLASSDOOR_REVIEWS, INSERT_CULTURE_SIGNAL
 from app.models.glassdoor_model import GlassdoorReview, CultureSignal
 
-logger = logging.getLogger(__name__)
+# --- New Constants ---
 
-# --- Constants ---
+INNOVATION_POSITIVE = [
+    "innovative", "cutting-edge", "forward-thinking",
+    "encourages new ideas", "experimental", "creative freedom",
+    "startup mentality", "move fast", "disruptive"
+]
 
-COMPANY_IDS = {
-    "NVDA": "7633",
-    "JPM": "5224839",
-    "WMT": "715",
-    "GE": "277",
-    "DG": "1342"
-}
+INNOVATION_NEGATIVE = [
+    "bureaucratic", "slow to change", "resistant",
+    "outdated", "stuck in old ways", "red tape",
+    "politics", "siloed", "hierarchical"
+]
 
-WEXTRACTOR_URL = "https://wextractor.com/api/v1/reviews/glassdoor"
+DATA_DRIVEN_KEYWORDS = [
+    "data-driven", "metrics", "evidence-based",
+    "analytical", "kpis", "dashboards", "data culture",
+    "measurement", "quantitative"
+]
+
+AI_AWARENESS_KEYWORDS = [
+    "ai", "artificial intelligence", "machine learning",
+    "automation", "data science", "ml", "algorithms",
+    "predictive", "neural network"
+]
+
+CHANGE_POSITIVE = [
+    "agile", "adaptive", "fast-paced", "embraces change",
+    "continuous improvement", "growth mindset"
+]
+
+CHANGE_NEGATIVE = [
+    "rigid", "traditional", "slow", "risk-averse",
+    "change resistant", "old school"
+]
 
 # --- Collector Class ---
+# ... (existing imports and methods) ...
+
+    def analyze_reviews(self, reviews: List[GlassdoorReview]) -> CultureSignal:
+        """
+        Analyze reviews for culture indicators using weighted keyword scoring.
+        Algorithm:
+        1. Combine pros and cons text for each review
+        2. Count keyword matches for each category
+        3. Weight by recency (last 2 years = full weight, older = 0.5)
+        4. Weight current employees higher (1.2x multiplier)
+        5. Calculate component scores
+        6. Calculate overall weighted average
+        """
+        if not reviews:
+            return None
+
+        # Initialize weighted sums
+        innov_score_sum = 0
+        data_score_sum = 0
+        ai_score_sum = 0
+        change_score_sum = 0
+        
+        total_weight = 0.0
+
+        for r in reviews:
+            # 1. Combine text
+            text = (r.pros or "") + " " + (r.cons or "")
+            text = text.lower()
+            
+            # 2. Match Keywords (simple containment)
+            # Innovation
+            innov_pos = sum(1 for hw in INNOVATION_POSITIVE if hw in text)
+            innov_neg = sum(1 for hw in INNOVATION_NEGATIVE if hw in text)
+            innov_net = innov_pos - innov_neg
+
+            # Data
+            data_mentions = sum(1 for hw in DATA_DRIVEN_KEYWORDS if hw in text)
+
+            # AI
+            ai_mentions = sum(1 for hw in AI_AWARENESS_KEYWORDS if hw in text)
+
+            # Change
+            change_pos = sum(1 for hw in CHANGE_POSITIVE if hw in text)
+            change_neg = sum(1 for hw in CHANGE_NEGATIVE if hw in text)
+            change_net = change_pos - change_neg
+
+            # 3. Recency Weight
+            days_old = (date.today() - r.review_date.date()).days
+            recency_weight = 1.0 if days_old < 730 else 0.5
+            
+            # 4. Employee Status Weight
+            employee_weight = 1.2 if r.is_current_employee else 1.0
+            
+            weight = recency_weight * employee_weight
+            total_weight += weight
+
+            # Accumulate weighted contributions
+            # Formula interpretation:
+            # Each review contributes its (net * weight) to the sum?
+            # Or calculate score per review and average?
+            # The image says: innovation_score = (positive_mentions - negative_mentions) / total_reviews * 50 + 50
+            # Let's interpret "total_reviews" as "total_weight" in a weighted system.
+            
+            innov_score_sum += innov_net * weight
+            data_score_sum += data_mentions * weight
+            ai_score_sum += ai_mentions * weight
+            change_score_sum += change_net * weight
+            
+        # 5. Calculate Component Scores (normalized 0-100)
+        # Base 50, +/- based on net sentiment density.
+        # Scaling factor: If every review has +1 net mention, score should be ~100? or ~60? 
+        # Image says: (pos - neg) / total * 50 + 50.
+        # Let's start with that but using weighted sums.
+        
+        if total_weight == 0:
+            return None
+
+        # Normalized to 0-100 range roughly
+        # Innovation: Base 50. +1 avg net mention -> 100? No, let's say +1 avg is good.
+        # Let's use a multiplier. 50?
+        # (innov_score_sum / total_weight) is "avg net mentions per weighted review".
+        # If avg is 1 (1 more pos than neg per review), score = 1 * 50 + 50 = 100.
+        # If avg is -1, score = -1 * 50 + 50 = 0.
+        # Perfectly reasonable range.
+        
+        innov_final = (innov_score_sum / total_weight) * 50 + 50
+        change_final = (change_score_sum / total_weight) * 50 + 50
+        
+        # Data & AI: These are just mentions, no negative keywords listed in constants (for Data/AI).
+        # Image Formula: data_driven_score = data_mentions / total_reviews * 100
+        # Wait, mentions are usually sparse. If 1 in 10 reviews mentions it, avg is 0.1. Score = 10?
+        # Maybe scale is higher or threshold based.
+        # Let's stick to the linear formula from the prompt image logic if visible, 
+        # or use a reasonable scaler like 100.
+        # Logic in image (blurry) seems to be `data_mentions / total_reviews * 100`.
+        # So providing 1 mention per review = 100 score.
+        
+        data_final = (data_score_sum / total_weight) * 100
+        ai_final = (ai_score_sum / total_weight) * 100
+        
+        # Clamp scores 0-100
+        def clamp(x): return max(0.0, min(100.0, x))
+        
+        innov_final = clamp(innov_final)
+        change_final = clamp(change_final)
+        data_final = clamp(data_final)
+        ai_final = clamp(ai_final)
+        
+        # 6. Overall Weighted Average
+        # Formula: 0.20 * innov + 0.25 * data + 0.25 * ai + 0.30 * change
+        overall = (
+            0.20 * innov_final +
+            0.25 * data_final +
+            0.25 * ai_final +
+            0.30 * change_final
+        )
+        
+        return CultureSignal(
+            company_id=reviews[0].company_id,
+            ticker=reviews[0].ticker,
+            batch_date=date.today(),
+            innovation_score=round(innov_final, 2),
+            data_driven_score=round(data_final, 2),
+            ai_awareness_score=round(ai_final, 2),
+            change_readiness_score=round(change_final, 2),
+            overall_sentiment=round(overall, 2), # Using overall culture score as sentiment
+            review_count=len(reviews),
+            confidence_score=0.8 # Placeholder or calc based on volume
+        )
 
 class GlassdoorCollector:
     def __init__(self):
@@ -33,20 +184,23 @@ class GlassdoorCollector:
         if not self.api_key or self.api_key == "dummy_key":
             logger.warning("WEXTRACTOR_API_KEY is not set or is dummy. Collector will fail.")
 
-    async def fetch_reviews(self, ticker: str, limit: int = 10, offset: int = 0) -> List[Dict]:
+    async def fetch_reviews(self, ticker: str, glassdoor_id: str = None, limit: int = 10, offset: int = 0) -> List[Dict]:
         """
         Fetch raw reviews from Wextractor API.
+        If glassdoor_id is provided, uses it. Otherwise looks up in COMPANY_IDS.
         """
-        if ticker not in COMPANY_IDS:
-            logger.error(f"No Glassdoor ID found for ticker {ticker}")
+        if not glassdoor_id:
+            glassdoor_id = COMPANY_IDS.get(ticker)
+        
+        if not glassdoor_id:
+            logger.error(f"No Glassdoor ID found for ticker {ticker} and none provided.")
             return []
 
-        glassdoor_id = COMPANY_IDS[ticker]
         params = {
             "id": glassdoor_id,
             "auth_token": self.api_key,
             "offset": offset,
-            "limit": limit, # Note: API doc says it returns 10 per request, limit might not be adjustable per call but we can use offset loop
+            "limit": limit, # Note: API might ignore limit > 10
             "language": "en"
         }
 
@@ -273,7 +427,15 @@ class GlassdoorCollector:
         except Exception as e:
             logger.error(f"Failed to save culture signal: {e}")
 
-    async def run_pipeline(self, ticker: str, limit: int = 20):
+    async def run_pipeline(self, ticker: str, glassdoor_id: str = None, limit: int = 20):
+        # Resolve ID first
+        if not glassdoor_id:
+            glassdoor_id = COMPANY_IDS.get(ticker)
+            
+        if not glassdoor_id:
+            logger.error(f"Cannot run pipeline for {ticker}: No Glassdoor ID found.")
+            return
+
         # 0. Check S3 for existing data for today
         date_str = datetime.now().strftime("%Y-%m-%d")
         s3_key = f"raw/glassdoor/{ticker}/{date_str}.json"
@@ -285,7 +447,8 @@ class GlassdoorCollector:
 
         if not raw_reviews:
             # 1. Fetch
-            raw_reviews = await self.fetch_reviews(ticker, limit)
+            # Pass resolved glassdoor_id
+            raw_reviews = await self.fetch_reviews(ticker, glassdoor_id=glassdoor_id, limit=limit)
             if not raw_reviews:
                 logger.info(f"No reviews found for {ticker}")
                 return
@@ -297,7 +460,7 @@ class GlassdoorCollector:
         
         # 3. Parse
         parsed_reviews = [
-            self.parse_review(r, ticker, COMPANY_IDS[ticker]) 
+            self.parse_review(r, ticker, glassdoor_id) 
             for r in raw_reviews
         ]
         
@@ -310,3 +473,15 @@ class GlassdoorCollector:
         
         # 6. Persist Culture Signal
         await self.save_culture_signal(signal)
+
+    async def run_batch(self, companies: List[Dict[str, str]], limit: int = 20):
+        """
+        Run pipeline for multiple companies.
+        Expects a list of dicts: [{"ticker": "NVDA", "id": "7633"}, ...]
+        """
+        logger.info(f"Starting batch run for {len(companies)} companies...")
+        for comp in companies:
+            ticker = comp.get("ticker")
+            gid = comp.get("id")
+            if ticker:
+                await self.run_pipeline(ticker, glassdoor_id=gid, limit=limit)
