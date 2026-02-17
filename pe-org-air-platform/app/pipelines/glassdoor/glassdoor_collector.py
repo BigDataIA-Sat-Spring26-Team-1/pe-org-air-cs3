@@ -8,7 +8,7 @@ from typing import List, Dict
 from app.config import settings
 from app.services.s3_storage import aws_service
 from app.services.snowflake import db
-from app.pipelines.glassdoor.glassdoor_queries import MERGE_GLASSDOOR_REVIEWS
+from app.pipelines.glassdoor.glassdoor_queries import MERGE_GLASSDOOR_REVIEWS, INSERT_CULTURE_SIGNAL
 from app.models.glassdoor_model import GlassdoorReview, CultureSignal
 
 logger = logging.getLogger(__name__)
@@ -248,15 +248,56 @@ class GlassdoorCollector:
             confidence_score=0.8
         )
 
-    async def run_pipeline(self, ticker: str, limit: int = 20):
-        # 1. Fetch
-        raw_reviews = await self.fetch_reviews(ticker, limit)
-        if not raw_reviews:
-            logger.info(f"No reviews found for {ticker}")
+    async def save_culture_signal(self, signal: CultureSignal):
+        if not signal:
             return
             
-        # 2. S3
-        await self.save_raw_to_s3(ticker, raw_reviews)
+        logger.info(f"Saving culture signal for {signal.ticker} to Snowflake...")
+        try:
+            await db.execute(
+                INSERT_CULTURE_SIGNAL,
+                (
+                    signal.company_id,
+                    signal.ticker,
+                    signal.batch_date,
+                    signal.innovation_score,
+                    signal.data_driven_score,
+                    signal.ai_awareness_score,
+                    signal.change_readiness_score,
+                    signal.overall_sentiment,
+                    signal.review_count,
+                    signal.confidence_score
+                )
+            )
+            logger.info("Successfully saved culture signal.")
+        except Exception as e:
+            logger.error(f"Failed to save culture signal: {e}")
+
+    async def run_pipeline(self, ticker: str, limit: int = 20):
+        # 0. Check S3 for existing data for today
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        s3_prefix = f"raw/glassdoor/{ticker}/{date_str}"
+        
+        existing_files = aws_service.list_files(s3_prefix)
+        raw_reviews = None
+        
+        if existing_files:
+            # Pick the most recent one (lexicographically last usually works due to timestamp)
+            latest_file = sorted(existing_files)[-1]
+            logger.info(f"Found existing raw data for {ticker} in S3: {latest_file}")
+            raw_reviews = aws_service.read_json(latest_file)
+
+        if not raw_reviews:
+            # 1. Fetch
+            raw_reviews = await self.fetch_reviews(ticker, limit)
+            if not raw_reviews:
+                logger.info(f"No reviews found for {ticker}")
+                return
+                
+            # 2. S3
+            await self.save_raw_to_s3(ticker, raw_reviews)
+        else:
+            logger.info(f"Using {len(raw_reviews)} reviews from S3 cache.")
         
         # 3. Parse
         parsed_reviews = [
@@ -271,4 +312,5 @@ class GlassdoorCollector:
         signal = self.analyze_reviews(parsed_reviews)
         logger.info(f"Culture Signal for {ticker}: {signal}")
         
-        # TODO: Persist CultureSignal to Snowflake 'culture_scores'
+        # 6. Persist Culture Signal
+        await self.save_culture_signal(signal)
