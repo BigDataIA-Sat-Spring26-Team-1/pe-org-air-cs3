@@ -60,3 +60,50 @@ WHEN NOT MATCHED THEN INSERT (
     source.review_count, source.confidence_score, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 )
 """
+
+CREATE_GLASSDOOR_REVIEWS_TABLE = """
+CREATE TABLE IF NOT EXISTS glassdoor_reviews (
+    id STRING PRIMARY KEY,
+    company_id STRING,
+    ticker STRING,
+    review_date TIMESTAMP,
+    rating FLOAT,
+    title STRING,
+    pros STRING,
+    cons STRING,
+    advice_to_management STRING,
+    is_current_employee BOOLEAN,
+    job_title STRING,
+    location STRING,
+    culture_rating FLOAT,
+    diversity_rating FLOAT,
+    work_life_rating FLOAT,
+    senior_management_rating FLOAT,
+    comp_benefits_rating FLOAT,
+    career_opp_rating FLOAT,
+    recommend_to_friend STRING,
+    ceo_rating STRING,
+    business_outlook STRING,
+    raw_json VARIANT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP(),
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP()
+)
+"""
+
+CREATE_CULTURE_SCORES_TABLE = """
+CREATE TABLE IF NOT EXISTS culture_scores (
+    company_id STRING,
+    ticker STRING,
+    batch_date DATE,
+    innovation_score FLOAT,
+    data_driven_score FLOAT,
+    ai_awareness_score FLOAT,
+    change_readiness_score FLOAT,
+    overall_sentiment FLOAT,
+    review_count INTEGER,
+    confidence_score FLOAT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP(),
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP(),
+    PRIMARY KEY (company_id, batch_date)
+)
+"""
