@@ -1,15 +1,18 @@
-# Dockerfile for PE Org-AI-R Platform
-FROM python:3.11-slim-bookworm
 
-# Set working directory inside container
-WORKDIR /app
+# ----------------------------------------------------------------------
+# UNIFIED DOCKERFILE FOR PE ORG-AIR PLATFORM (AIRFLOW + API)
+# ----------------------------------------------------------------------
+# Base Image: Official Apache Airflow (Python 3.11)
+# We use this as base because Airflow has complex system dependencies
+FROM apache/airflow:2.8.1-python3.11
 
-# Set Playwright browser path
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-ENV PYTHONUNBUFFERED=1
+USER root
 
-# Install required system-level dependencies for browsers and networking
-# We include fonts and libraries manually to ensure compatibility with ARM64/Debian Bookworm
+# 1. Install System Dependencies
+# Required for:
+# - Playwright (browsers, networking deps)
+# - Compilation (gcc)
+# - PDF Generation (wkhtmltopdf)
 RUN apt-get update && apt-get install -y \
     gcc \
     curl \
@@ -33,31 +36,30 @@ RUN apt-get update && apt-get install -y \
     wkhtmltopdf \
     && rm -rf /var/lib/apt/lists/*
 
-# Installing Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# 2. Switch to Airflow User for Python Installs
+USER airflow
 
-# Install Playwright browser
-# We skip 'install-deps' because we already installed the required libs above
+# 3. Install Python Dependencies
+# Copy requirements from project root (context is pe-org-air-platform)
+COPY requirements.txt /requirements.txt
+RUN pip install --no-cache-dir -r /requirements.txt
+
+# 4. Install Playwright Browsers
+# Explicitly install chromium for the airflow user
 RUN playwright install chromium
 
-# Copy application source code and tests
-COPY app/ ./app/
-COPY tests/ ./tests/
+# 5. Copy Application Code
+# We copy code into /opt/airflow/app for Airflow AND /app for API compatibility
+COPY --chown=airflow:root app /opt/airflow/app
+COPY --chown=airflow:root app /app
 
-# Create and switch to a non-root user for security
-RUN useradd -m appuser && \
-    mkdir -p /ms-playwright && \
-    chown -R appuser:appuser /app /ms-playwright
-USER appuser
+# Copy DAGs
+COPY --chown=airflow:root dags /opt/airflow/dags
 
+# Set PYTHONPATH so both Airflow and API can find 'app' module
+ENV PYTHONPATH="${PYTHONPATH}:/opt/airflow:/app"
+ENV PLAYWRIGHT_BROWSERS_PATH=/home/airflow/.cache/ms-playwright
 
-# Expose application port
-EXPOSE 8000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# Start FastAPI application using Uvicorn
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 6. Runtime Configuration
+# - Airflow services use default entrypoint
+# - API service overrides entrypoint in docker-compose
