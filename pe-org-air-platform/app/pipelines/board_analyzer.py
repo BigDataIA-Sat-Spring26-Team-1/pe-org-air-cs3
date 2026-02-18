@@ -1,5 +1,7 @@
-from decimal import Decimal
 import re
+import httpx
+import datetime
+from decimal import Decimal
 from typing import List, Tuple
 from app.models.board import BoardMember, GovernanceSignal
 from bs4 import BeautifulSoup
@@ -31,47 +33,66 @@ class BoardCompositionAnalyzer:
     SCORE_RISK_OVERSIGHT = Decimal("10")
     SCORE_STRATEGIC_PRIORITY = Decimal("10")
 
-    AI_EXPERTISE_KEYWORDS = [
-        "artificial intelligence",
-        "machine learning",
-        "chief data officer",
-        "cdo",
-        "caio",
-        "chief ai",
-        "chief technology",
-        "cto",
-        "chief digital",
-        "data science",
-        "analytics",
-        "digital transformation",
+    # AI expertise patterns
+    AI_EXPERTISE_PATTERNS = [
+        r'\bartificial\s+intelligence\b',
+        r'\bmachine\s+learning\b',
+        r'\bchief\s+data\s+officer\b',
+        r'\bCDO\b',
+        r'\bCAIO\b',
+        r'\bchief\s+ai\b',
+        r'\bchief\s+technology\b',
+        r'\bCTO\b',
+        r'\bchief\s+digital\b',
+        r'\bdata\s+science\b',
+        r'\banalytics\b',
+        r'\bdigital\s+transformation\b',
     ]
 
-    TECH_COMMITTEE_NAMES = [
-        "technology committee",
-        "digital committee",
-        "innovation committee",
-        "it committee",
-        "technology and cybersecurity"
+    # Tech committee patterns
+    TECH_COMMITTEE_PATTERNS = [
+        r'\btechnology\s+committee\b',
+        r'\btechnology\s+and\s+\w+\s+committee\b',
+        r'\bdigital\s+(strategy\s+)?committee\b',
+        r'\binnovation\s+committee\b',
+        r'\bIT\s+committee\b',
+        r'\btechnology\s+and\s+cybersecurity\b',
+        r'\binformation\s+technology\s+committee\b',
     ]
 
-    DATA_OFFICER_TITLES = [
-        "chief data officer", "cdo",
-        "chief ai officer", "caio",
-        "chief analytics officer", "cao",
-        "chief digital officer"
+    # Data officer patterns
+    DATA_OFFICER_PATTERNS = [
+        r'\bchief\s+data\s+officer\b',
+        r'\bCDO\b',
+        r'\bchief\s+ai\s+officer\b',
+        r'\bCAIO\b',
+        r'\bchief\s+analytics\s+officer\b',
+        r'\bCAO\b',
+        r'\bchief\s+digital\s+officer\b',
     ]
 
-    AI_STRATEGY_KEYWORDS = [
-        "artificial intelligence", "machine learning", "ai strategy",
-        "ai initiative", "ai transformation", "generative ai", "ai model"
+    # AI strategy patterns
+    AI_STRATEGY_PATTERNS = [
+        r'\bartificial\s+intelligence\b',
+        r'\bmachine\s+learning\b',
+        r'\bai\s+strategy\b',
+        r'\bai\s+initiative',
+        r'\bai\s+transformation\b',
+        r'\bgenerative\s+ai\b',
+        r'\bai\s+model'
     ]
 
-    RISK_TECH_KEYWORDS = [
-        "technology",
-        "cyber",
-        "digital",
-        "it"
+    # Risk+tech patterns
+    RISK_TECH_PATTERNS = [
+        r'\btechnology\b',
+        r'\bcyber(security)?\b',
+        r'\bdigital\b',
+        r'\bIT\b',
+        r'\binformation\s+technology\b',
     ]
+
+    SEC_API_KEY = "0c6b6b0df58cba77bb714d703df6468482e29b67b343728ce00048f3eac7390c"
+    SEC_ENDPOINT = "https://api.sec-api.io/directors-and-board-members"
 
     def __init__(self):
         self.confidence = None
@@ -86,16 +107,6 @@ class BoardCompositionAnalyzer:
     ) -> GovernanceSignal:
         """
         Analyze board for AI governance strength.
-        
-        Args:
-            company_id: Company UUID
-            ticker: Stock ticker
-            members: List of board members and executives
-            committees: List of committee names
-            strategy_text: Text from annual report strategy section
-        
-        Returns:
-            GovernanceSignal with governance score
         """
         score = self.BASE_SCORE
 
@@ -103,9 +114,11 @@ class BoardCompositionAnalyzer:
         relevant_committees = []
         has_tech = False
         for c in committees:
-            if any(tc in c.lower() for tc in self.TECH_COMMITTEE_NAMES):
-                has_tech = True
-                relevant_committees.append(c)
+            for pattern in self.TECH_COMMITTEE_PATTERNS:
+                if re.search(pattern, c, re.IGNORECASE):
+                    has_tech = True
+                    relevant_committees.append(c)
+                    break
 
         if has_tech:
             score += self.SCORE_TECH_COMMITTEE
@@ -113,10 +126,13 @@ class BoardCompositionAnalyzer:
         # Check for AI expertise on board
         ai_experts = []
         for member in members:
-            bio_lower = member.bio.lower()
-            title_lower = member.title.lower()
-
-            if any(kw in bio_lower or kw in title_lower for kw in self.AI_EXPERTISE_KEYWORDS):
+            has_match = any(
+                re.search(pattern, member.bio, re.IGNORECASE) or 
+                re.search(pattern, member.title, re.IGNORECASE)
+                for pattern in self.AI_EXPERTISE_PATTERNS
+            )
+            
+            if has_match:
                 ai_experts.append(member.name)
 
         has_ai_expertise = len(ai_experts) > 0
@@ -126,13 +142,12 @@ class BoardCompositionAnalyzer:
         # Check for data officer role
         has_data_officer = False
         for member in members:
-            title_lower = member.title.lower()
-            bio_lower = member.bio.lower()
-
-            if any(
-                title in title_lower or title in bio_lower
-                for title in self.DATA_OFFICER_TITLES
-            ):
+            has_match = any(
+                re.search(pattern, member.title, re.IGNORECASE) or
+                re.search(pattern, member.bio, re.IGNORECASE)
+                for pattern in self.DATA_OFFICER_PATTERNS
+            )
+            if has_match:
                 has_data_officer = True
                 break
 
@@ -152,14 +167,13 @@ class BoardCompositionAnalyzer:
         # Check risk committee oversight
         has_risk_tech_oversight = False
         for c in committees:
-            c_lower = c.lower()
-            if "risk" in c_lower and any(
-                tech in c_lower
-                for tech in self.RISK_TECH_KEYWORDS
-            ):
-                has_risk_tech_oversight = True
-                if c not in relevant_committees:
-                    relevant_committees.append(c)
+            if "risk" in c.lower():
+                for pattern in self.RISK_TECH_PATTERNS:
+                    if re.search(pattern, c, re.IGNORECASE):
+                        has_risk_tech_oversight = True
+                        if c not in relevant_committees:
+                            relevant_committees.append(c)
+                        break
 
         if has_risk_tech_oversight:
             score += self.SCORE_RISK_OVERSIGHT
@@ -167,8 +181,10 @@ class BoardCompositionAnalyzer:
         # Check AI in strategy
         has_ai_in_strategy = False
         if strategy_text:
-            strategy_lower = strategy_text.lower()
-            has_ai_in_strategy = any(kw in strategy_lower for kw in self.AI_STRATEGY_KEYWORDS)
+            has_ai_in_strategy = any(
+                re.search(pattern, strategy_text, re.IGNORECASE)
+                for pattern in self.AI_STRATEGY_PATTERNS
+            )
 
             if has_ai_in_strategy:
                 score += self.SCORE_STRATEGIC_PRIORITY
@@ -176,7 +192,7 @@ class BoardCompositionAnalyzer:
         # Cap at 100
         score = min(score, self.MAX_SCORE)
 
-        # Calculate confidence based on data completeness
+        # Calculate confidence
         data_points = 0
         total_possible = 6
 
@@ -216,3 +232,84 @@ class BoardCompositionAnalyzer:
             relevant_committees=relevant_committees
         )
 
+    def _calculate_tenure(self, date_str: str) -> int:
+        """Calculate years of tenure from date string."""
+        if not date_str:
+            return 0
+
+        match = re.search(r'\d{4}', str(date_str))
+        if match:
+            start_year = int(match.group())
+            current_year = datetime.datetime.now().year
+            return max(0, current_year - start_year)
+        return 0
+
+    def fetch_board_data(self, ticker: str) -> Tuple[List[BoardMember], List[str]]:
+        """Fetches board data from sec-api.io."""
+        payload = {
+            "query": f"ticker:{ticker}",
+            "from": 0,
+            "size": 1, 
+            "sort": [{ "filedAt": { "order": "desc" } }]
+        }
+
+        headers = {
+            "Authorization": self.SEC_API_KEY,
+            "Content-Type": "application/json"
+        }
+
+        print(f"Fetching board data for {ticker}...")
+
+        try:
+            with httpx.Client(timeout=10.0) as client:
+                response = client.post(
+                    self.SEC_ENDPOINT, 
+                    json=payload, 
+                    headers=headers
+                )
+                response.raise_for_status()
+                data = response.json()
+
+            if not data.get('data') or len(data['data']) == 0:
+                print(f"No data found for ticker {ticker}")
+                return [], []
+
+            latest_filing = data['data'][0]
+            api_directors = latest_filing.get('directors', [])
+            
+            board_members = []
+            all_committees = set()
+
+            for d in api_directors:
+                name = d.get('name', 'Unknown')
+                title = d.get('position', '') or ""
+                
+                tenure_years = self._calculate_tenure(d.get('dateFirstElected'))
+                is_independent = bool(d.get('isIndependent'))
+
+                qualifications = d.get('qualificationsAndExperience', [])
+                bio_text = ", ".join(qualifications) if qualifications else ""
+                
+                committees_data = d.get('committeeMemberships', [])
+                clean_committees = []
+                for c in committees_data:
+                    c_name = c if isinstance(c, str) else c.get('name', '')
+                    if c_name:
+                        clean_committees.append(c_name)
+                        all_committees.add(c_name)
+
+                member = BoardMember(
+                    name=name,
+                    title=title,
+                    bio=bio_text,
+                    is_independent=is_independent,
+                    tenure_years=tenure_years,
+                    committees=clean_committees
+                )
+                board_members.append(member)
+
+            return board_members, list(all_committees)
+
+        except Exception as e:
+            print(f"Error fetching data: {e}")
+            return [], []
