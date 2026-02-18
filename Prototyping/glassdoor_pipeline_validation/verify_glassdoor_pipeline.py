@@ -2,13 +2,25 @@
 import asyncio
 import logging
 import sys
+import os
+
+# Ensure the app module is in the path
+sys.path.append(os.path.join(os.path.dirname(__file__), '../../pe-org-air-platform'))
+
 from datetime import datetime
 from app.pipelines.glassdoor.glassdoor_orchestrator import GlassdoorOrchestrator
 from app.services.s3_storage import aws_service
 from app.services.snowflake import db
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler("verification_run.log", mode='w')
+    ]
+)
 logger = logging.getLogger(__name__)
 
 async def main():

@@ -75,5 +75,17 @@ class AWSService:
             logger.error("read_json_parse_error", error=str(e), key=s3_key)
             return None
 
+    def delete_file(self, s3_key: str) -> bool:
+        """Delete a file from S3."""
+        if not self.s3_client:
+            return False
+        try:
+            self.s3_client.delete_object(Bucket=self.bucket, Key=s3_key)
+            logger.info("file_deleted", bucket=self.bucket, key=s3_key)
+            return True
+        except ClientError as e:
+            logger.error("delete_file_failed", error=str(e), key=s3_key)
+            return False
+
 
 aws_service = AWSService()

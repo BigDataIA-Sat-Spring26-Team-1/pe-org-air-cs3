@@ -23,10 +23,6 @@ COMPANY_IDS = {
 
 WEXTRACTOR_URL = "https://wextractor.com/api/v1/reviews/glassdoor"
 
-
-
-# --- New Constants ---
-
 # --- RubricScorer Class ---
 
 from enum import Enum
@@ -122,58 +118,6 @@ class RubricScorer:
             RubricCriteria(level=ScoreLevel.FIVE, keywords=["fast-paced", "embraces change"], min_keyword_matches=3, quantitative_threshold=Decimal(90)),
         ]
     }
-
-    def score_dimension(self, reviews: List[GlassdoorReview], dimension_key: str) -> Decimal:
-        """
-        Calculates aggregate score for a dimension using the "Bubble Up" aggregate formula.
-        
-        Formula 1 (Innovation, Change Readiness - directional):
-            Score = ((Total Pos - Total Neg) / Total Reviews) * 50 + 50
-            
-        Formula 2 (Data, AI - presence only):
-            Score = (Total Mentions / Total Reviews) * 100
-        """
-        if not reviews:
-            return Decimal(0)
-            
-        config = self.SCORING_KEYWORDS.get(dimension_key)
-        if not config:
-            return Decimal(0)
-            
-        total_pos = 0
-        total_neg = 0
-        
-        # 1. Aggregate counts across ALL reviews
-        for r in reviews:
-            text = ((r.pros or "") + " " + (r.cons or "")).lower()
-            
-            for k in config["positive"]:
-                if k in text:
-                    total_pos += 1
-            
-            for k in config["negative"]:
-                if k in text:
-                    total_neg += 1
-        
-        total_reviews = Decimal(len(reviews))
-        
-        # 2. Apply Formula based on Dimension Type
-        if dimension_key in ["data_driven", "ai_awareness"]:
-            # Formula: (Mentions / N) * 100
-            raw_score = (Decimal(total_pos) / total_reviews) * Decimal(100)
-        else:
-            # Formula: ((Pos - Neg) / N) * 50 + 50
-            net = Decimal(total_pos) - Decimal(total_neg)
-            raw_score = (net / total_reviews) * Decimal(50) + Decimal(50)
-            
-        # 3. Clamp 0-100
-        return max(Decimal(0), min(Decimal(100), raw_score))
-
-    def score_all_dimensions(self, reviews: List[GlassdoorReview]) -> Dict[str, Decimal]:
-        return {
-            dim: self.score_dimension(reviews, dim)
-            for dim in self.SCORING_KEYWORDS.keys()
-        }
     
     def get_evidence_keywords(self, reviews: List[GlassdoorReview]) -> tuple[List[str], List[str]]:
         """Helper to extract found keywords for evidence."""
@@ -201,60 +145,89 @@ class GlassdoorCultureCollector:
         if not self.api_key or self.api_key == "dummy_key":
             logger.warning("WEXTRACTOR_API_KEY is not set or is dummy. Collector will fail.")
 
-    async def fetch_reviews(self, ticker: str, glassdoor_id: str = None, limit: int = 10, offset: int = 0) -> List[Dict]:
+    async def fetch_reviews(self, ticker: str, limit: int = 100) -> List[GlassdoorReview]:
         """
-        Fetch raw reviews from Wextractor API.
-        If glassdoor_id is provided, uses it. Otherwise looks up in COMPANY_IDS.
+        Fetch raw reviews from Glassdoor (or cached data), parse them, and return objects.
+        Handles S3 caching of raw JSON internally.
         """
+        glassdoor_id = COMPANY_IDS.get(ticker)
         if not glassdoor_id:
-            glassdoor_id = COMPANY_IDS.get(ticker)
-        
-        if not glassdoor_id:
-            logger.error(f"No Glassdoor ID found for ticker {ticker} and none provided.")
+            logger.error(f"No Glassdoor ID found for ticker {ticker}.")
             return []
 
-        params = {
-            "id": glassdoor_id,
-            "auth_token": self.api_key,
-            "offset": offset,
-            "limit": limit, # Note: API might ignore limit > 10
-            "language": "en"
-        }
+        # 1. Check S3 for existing data for today
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        s3_key = f"raw/glassdoor/{ticker}/{date_str}.json"
         
-        all_reviews = []
-        current_offset = offset
+        # Late import to avoid circular dependency if needed, though usually safe here
+        from app.services.s3_storage import aws_service
+
+        raw_reviews = None
+        if aws_service.file_exists(s3_key):
+             logger.info(f"Found existing raw data for {ticker} in S3: {s3_key}")
+             raw_reviews = aws_service.read_json(s3_key)
+
+        if not raw_reviews:
+            # Fetch from API
+            params = {
+                "id": glassdoor_id,
+                "auth_token": self.api_key,
+                "limit": limit,
+                "language": "en"
+            }
+            
+            all_reviews = []
+            
+            async with httpx.AsyncClient() as client:
+                try:
+                    # Simple fetch for now, can add pagination loop if needed for >10 reviews
+                    # But request limit is 100 usually max.
+                    # Re-implementing the loop from before:
+                    fetched_count = 0
+                    current_offset = 0
+                    
+                    while fetched_count < limit:
+                        params["offset"] = current_offset
+                        logger.info(f"Fetching Glassdoor reviews for {ticker} (ID: {glassdoor_id}), offset={current_offset}")
+                        
+                        response = await client.get(WEXTRACTOR_URL, params=params, timeout=30.0)
+                        response.raise_for_status()
+                        data = response.json()
+                        
+                        reviews = data.get("reviews", [])
+                        if not reviews:
+                            break
+                            
+                        all_reviews.extend(reviews)
+                        fetched_count += len(reviews)
+                        current_offset += len(reviews)
+                        
+                        await asyncio.sleep(0.5)
+                        if len(reviews) < 10: # API page size often small
+                            break
+                except Exception as e:
+                     logger.error(f"Error fetching from Wextractor: {e}")
+                     return []
+            
+            raw_reviews = all_reviews[:limit]
+            
+            # Save Raw to S3
+            if raw_reviews:
+                 success = aws_service.upload_bytes(
+                    data=json.dumps(raw_reviews).encode('utf-8'),
+                    s3_key=s3_key,
+                    content_type="application/json"
+                )
+                 if success:
+                     logger.info(f"Saved {len(raw_reviews)} raw reviews to S3: {s3_key}")
+
+        # Parse Reviews
+        parsed_reviews = [
+            self.parse_review(r, ticker, glassdoor_id) 
+            for r in raw_reviews
+        ]
         
-        async with httpx.AsyncClient() as client:
-            try:
-                fetched_count = 0
-                while fetched_count < limit:
-                    params["offset"] = current_offset
-                    logger.info(f"Fetching Glassdoor reviews for {ticker} (ID: {glassdoor_id}), offset={current_offset}")
-                    
-                    response = await client.get(WEXTRACTOR_URL, params=params, timeout=30.0)
-                    logger.debug(f"Wextractor response status: {response.status_code}")
-                    response.raise_for_status()
-                    data = response.json()
-                    
-                    reviews = data.get("reviews", [])
-                    if not reviews:
-                        break
-                        
-                    all_reviews.extend(reviews)
-                    fetched_count += len(reviews)
-                    current_offset += len(reviews)
-                    
-                    # Rate limit sleep
-                    await asyncio.sleep(0.5)
-                    
-                    if len(reviews) < 10:
-                        break
-                        
-            except httpx.HTTPError as e:
-                logger.error(f"Error fetching from Wextractor: {e}")
-                return []
-                
-        return all_reviews[:limit]
+        return parsed_reviews
 
     def parse_review(self, raw: Dict, ticker: str, company_id: str) -> GlassdoorReview:
         """
@@ -298,27 +271,85 @@ class GlassdoorCultureCollector:
             raw_json=raw
         )
 
-    def analyze_reviews(self, reviews: List[GlassdoorReview]) -> Optional[CultureSignal]:
+    def analyze_reviews(self, company_id: str, ticker: str, reviews: List[GlassdoorReview]) -> Optional[CultureSignal]:
         """
-        Analyze reviews using RubricScorer and Simple Average.
+        Analyze reviews using Weighted Aggregation (Recency + Employee Status).
         """
         if not reviews:
             return None
 
-        # Delegate scoring to RubricScorer
-        scores = self.scorer.score_all_dimensions(reviews)
+        # 1. Calculate Weights & Weighted Counts
+        # Algorithm:
+        # Weight = recency_weight * employee_weight
+        # - recency: < 730 days = 1.0, else 0.5
+        # - employee: current = 1.2, else 1.0
         
-        innov_final = scores["innovation"]
-        change_final = scores["change_readiness"]
-        data_final = scores["data_driven"]
-        ai_final = scores["ai_awareness"]
+        total_weight = Decimal(0)
+        
+        # We need to track weighted positive/negative counts for each dimension
+        # dim -> {pos: 0.0, neg: 0.0, mentions: 0.0}
+        dim_scores = {
+            k: {"pos": Decimal(0), "neg": Decimal(0)} 
+            for k in self.scorer.SCORING_KEYWORDS.keys()
+        }
+        
+        today = datetime.now()
+        
+        for r in reviews:
+            # Calculate Weight
+            days_old = (today - r.review_date).days
+            recency_weight = Decimal("1.0") if days_old < 730 else Decimal("0.5")
+            
+            employee_weight = Decimal("1.2") if r.is_current_employee else Decimal("1.0")
+            
+            weight = recency_weight * employee_weight
+            total_weight += weight
+            
+            # Text Analysis
+            text = ((r.pros or "") + " " + (r.cons or "")).lower()
+            
+            # Check keywords for each dimension
+            for dim, config in self.scorer.SCORING_KEYWORDS.items():
+                # Positive Matches
+                for k in config["positive"]:
+                    if k in text:
+                        dim_scores[dim]["pos"] += weight
+                
+                # Negative Matches
+                for k in config["negative"]:
+                    if k in text:
+                        dim_scores[dim]["neg"] += weight
 
-        logger.debug(f"Culture Component Scores for {reviews[0].ticker}: "
+        # 2. Calculate Component Scores
+        final_scores = {}
+        
+        for dim, counts in dim_scores.items():
+            if total_weight == 0:
+                final_scores[dim] = Decimal(0)
+                continue
+                
+            if dim in ["data_driven", "ai_awareness"]:
+                # Formula: (Mentions / TotalWeight) * 100
+                # "Mentions" here is strictly positive keywords for these dimensions
+                raw = (counts["pos"] / total_weight) * Decimal(100)
+            else:
+                # Formula: ((Pos - Neg) / TotalWeight) * 50 + 50
+                net = counts["pos"] - counts["neg"]
+                raw = (net / total_weight) * Decimal(50) + Decimal(50)
+            
+            final_scores[dim] = max(Decimal(0), min(Decimal(100), raw))
+
+        innov_final = final_scores["innovation"]
+        change_final = final_scores["change_readiness"]
+        data_final = final_scores["data_driven"]
+        ai_final = final_scores["ai_awareness"]
+
+        logger.debug(f"Culture Component Scores for {ticker}: "
                      f"Innov={innov_final}, Change={change_final}, "
                      f"Data={data_final}, AI={ai_final}")
         
-        # Overall Weighted Average (Weights still apply to components?)
-        # Assuming weights for components are still valid requirements, just the aggregation method changed.
+        # 3. Calculate Overall Weighted Average
+        # Weights: Innov 0.30, Data 0.25, AI 0.25, Change 0.20
         overall = (
             Decimal("0.30") * innov_final +
             Decimal("0.25") * data_final +
@@ -328,17 +359,17 @@ class GlassdoorCultureCollector:
         
         # Additional Metrics
         total_rating = sum(Decimal(r.rating) for r in reviews)
-        avg_rating = total_rating / Decimal(len(reviews))
+        avg_rating = total_rating / Decimal(len(reviews)) if reviews else Decimal(0)
         
         current_employees = sum(1 for r in reviews if r.is_current_employee)
-        current_employee_ratio = Decimal(current_employees) / Decimal(len(reviews))
+        current_employee_ratio = Decimal(current_employees) / Decimal(len(reviews)) if reviews else Decimal(0)
         
-        # Evidence
+        # Evidence (Unweighted list of found keywords)
         pos_keys, neg_keys = self.scorer.get_evidence_keywords(reviews)
 
         return CultureSignal(
-            company_id=reviews[0].company_id,
-            ticker=reviews[0].ticker,
+            company_id=company_id,
+            ticker=ticker,
             batch_date=date.today(),
             innovation_score=innov_final.quantize(Decimal("0.00")),
             data_driven_score=data_final.quantize(Decimal("0.00")),
