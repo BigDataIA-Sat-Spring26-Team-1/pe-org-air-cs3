@@ -1,5 +1,3 @@
-# Prototyping/scoring_poc/test_board_analyzer_integration.py
-
 import unittest
 from board_analyzer import BoardCompositionAnalyzer, BoardMember
 from decimal import Decimal
