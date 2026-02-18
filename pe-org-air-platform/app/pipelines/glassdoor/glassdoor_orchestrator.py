@@ -15,31 +15,6 @@ class GlassdoorOrchestrator:
     def __init__(self):
         self.collector = GlassdoorCultureCollector()
 
-    async def save_raw_to_s3(self, ticker: str, reviews: List[Dict]) -> str:
-        """
-        Save raw JSON to S3 and return the key.
-        """
-        if not reviews:
-            return ""
-            
-        date_str = datetime.now().strftime("%Y-%m-%d")
-        s3_key = f"raw/glassdoor/{ticker}/{date_str}.json"
-        
-        # Use existing logic from collector but here
-        success = aws_service.upload_bytes(
-            data=json.dumps(reviews).encode('utf-8'),
-            s3_key=s3_key,
-            content_type="application/json"
-        )
-        
-        if success:
-            logger.info(f"Saved {len(reviews)} raw reviews to S3: {s3_key}")
-            logger.debug(f"S3 Payload Size: {len(json.dumps(reviews))} bytes")
-            return s3_key
-        else:
-            logger.error(f"Failed to save raw reviews to S3: {s3_key}")
-            return ""
-
     async def save_reviews_to_snowflake(self, reviews: List[GlassdoorReview]):
         """
         Bulk insert parsed reviews into Snowflake.
@@ -129,47 +104,33 @@ class GlassdoorOrchestrator:
         # Resolve ID first
         if not glassdoor_id:
             glassdoor_id = COMPANY_IDS.get(ticker)
+        else:
+            # Inject custom ID into COMPANY_IDS so fetch_reviews can find it
+            COMPANY_IDS[ticker] = glassdoor_id
         
         if not glassdoor_id:
             logger.error(f"Cannot run pipeline for {ticker}: No Glassdoor ID found.")
             return
 
-        # 0. Check S3 for existing data for today
-        date_str = datetime.now().strftime("%Y-%m-%d")
-        s3_key = f"raw/glassdoor/{ticker}/{date_str}.json"
+        # 1. Fetch & Parse (internal caching handled)
+        # Note: We pass limit. force_refresh isn't explicitly handled in the new signature yet unless we add it, 
+        # but for now we rely on the internal logic.
         
-        raw_reviews = None
-        if not force_refresh and aws_service.file_exists(s3_key):
-            logger.info(f"Found existing raw data for {ticker} in S3: {s3_key}")
-            raw_reviews = aws_service.read_json(s3_key)
-
-        if not raw_reviews:
-            # 1. Fetch
-            # Pass resolved glassdoor_id
-            raw_reviews = await self.collector.fetch_reviews(ticker, glassdoor_id=glassdoor_id, limit=limit)
-            if not raw_reviews:
-                logger.info(f"No reviews found for {ticker}")
-                return
-                
-            # 2. S3
-            await self.save_raw_to_s3(ticker, raw_reviews)
-        else:
-            logger.info(f"Using {len(raw_reviews)} reviews from S3 cache.")
+        parsed_reviews = await self.collector.fetch_reviews(ticker, limit=limit)
         
-        # 3. Parse
-        parsed_reviews = [
-            self.collector.parse_review(r, ticker, glassdoor_id) 
-            for r in raw_reviews
-        ]
-        
-        # 4. Snowflake
+        if not parsed_reviews:
+            logger.info(f"No reviews found for {ticker}")
+            return
+            
+        # 2. Snowflake
         await self.save_reviews_to_snowflake(parsed_reviews)
         
-        # 5. Analyze
-        signal = self.collector.analyze_reviews(parsed_reviews)
+        # 3. Analyze
+        # Pass company_id and ticker explicitly
+        signal = self.collector.analyze_reviews(glassdoor_id, ticker, parsed_reviews)
         logger.info(f"Culture Signal for {ticker}: {signal}")
         
-        # 6. Persist Culture Signal
+        # 4. Persist Culture Signal
         await self.save_culture_signal(signal)
 
     async def run_batch(self, companies: List[Dict[str, str]], limit: int = 20, force_refresh: bool = False):
