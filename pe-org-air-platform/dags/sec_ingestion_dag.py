@@ -29,7 +29,7 @@ def sec_ingestion_dag_def():
         from app.pipelines.sec.components import fetch_ticker_list
         return asyncio.run(fetch_ticker_list())
 
-    @task(execution_timeout=timedelta(minutes=10))
+    @task(retries=3, retry_delay=timedelta(minutes=2), execution_timeout=timedelta(minutes=5))
     def download_filings(ticker: str):
         import asyncio
         from app.pipelines.sec.components import download_ticker_filings
@@ -83,15 +83,8 @@ def sec_ingestion_dag_def():
     def cleanup():
         import shutil
         from pathlib import Path
-        # Be careful not to delete the download directory if we want persistence across days?
-        # Maybe just delete the temp XCom?
-        # User request was: delete *downloaded files* too? 
-        # "cleanup — Delete Redis keys, remove temp files from local disk."
-        # If we download daily fresh, we can clean up downloads.
-        # But if we want incremental, we might keep them?
-        # Implementing conservative cleanup of temp_xcom first.
-        # If user wants full cleanup, we can uncomment:
-        # shutil.rmtree("/opt/airflow/app_code/data/sec_downloads/sec-edgar-filings", ignore_errors=True)
+        # Conservative cleanup: Delete both downloads and temp XComs to ensure fresh state for next run
+        shutil.rmtree("/opt/airflow/app_code/data/sec_downloads/sec-edgar-filings", ignore_errors=True)
         shutil.rmtree("/opt/airflow/app_code/data/temp_xcom", ignore_errors=True)
 
     # Define Workflow
