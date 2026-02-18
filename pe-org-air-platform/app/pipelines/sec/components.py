@@ -5,23 +5,8 @@ import hashlib
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import structlog
-import re
-
-from app.pipelines.sec.downloader import SecDownloader
-from app.pipelines.sec.parser import SecParser
-from app.pipelines.sec.chunker import SemanticChunker
-from app.models.registry import DocumentRegistry
-from app.services.s3_storage import AWSService
-from app.services.snowflake import db
-from app.config import settings
-from app.models.sec import FilingMetadata
 
 logger = structlog.get_logger()
-
-# ---------------------------------------------------------
-# Atomic Tasks for Airflow (Pure Functions / Static Methods)
-# ---------------------------------------------------------
-
 
 # ---------------------------------------------------------
 # Atomic Tasks for Airflow (Pure Functions / Static Methods)
@@ -128,17 +113,11 @@ async def process_single_filing(
     Parse -> Hash -> Chunk -> S3 (Upload) -> Snowflake (Prep).
     Returns dict ready for DB insertion or status.
     """
-    import structlog
-    import json
-    import hashlib
-    from pathlib import Path
     from app.pipelines.sec.parser import SecParser
     from app.pipelines.sec.chunker import SemanticChunker
     from app.services.s3_storage import AWSService
     from app.config import settings
 
-    logger = structlog.get_logger()
-    
     parser = SecParser()
     chunker = SemanticChunker()
     aws = AWSService()
