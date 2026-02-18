@@ -29,7 +29,7 @@ def sec_ingestion_dag_def():
         from app.pipelines.sec.components import fetch_ticker_list
         return asyncio.run(fetch_ticker_list())
 
-    @task(retries=3, retry_delay=timedelta(minutes=2), execution_timeout=timedelta(minutes=5))
+    @task(retries=3, retry_delay=timedelta(minutes=2), execution_timeout=timedelta(minutes=5), max_active_tis_per_dag=5)
     def download_filings(ticker: str):
         import asyncio
         from app.pipelines.sec.components import download_ticker_filings
