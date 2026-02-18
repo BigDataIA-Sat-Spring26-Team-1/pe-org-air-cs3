@@ -47,15 +47,14 @@ async def download_ticker_filings(
         max_workers=1 # Single worker per task instance since we map at ticker level
     )
     
-    metadatas = await downloader.download_filings(
-        tickers=[ticker],
-        filing_types=filing_types,
-        limit_per_type=limit
-    )
+    # Updated to use synchronous method
+    downloader.download_ticker(ticker, filing_types, limit_per_type)
     
+    # We can skip returning metadatas here since discovery happens in next task
+    # But if we want stats:
     return {
         "ticker": ticker,
-        "downloaded_count": len(metadatas),
+        "downloaded_count": "N/A - Check Discover Step", 
         "download_dir": download_dir
     }
 
