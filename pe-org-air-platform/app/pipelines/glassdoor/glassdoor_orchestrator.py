@@ -34,6 +34,7 @@ class GlassdoorOrchestrator:
         
         if success:
             logger.info(f"Saved {len(reviews)} raw reviews to S3: {s3_key}")
+            logger.debug(f"S3 Payload Size: {len(json.dumps(reviews))} bytes")
             return s3_key
         else:
             logger.error(f"Failed to save raw reviews to S3: {s3_key}")
@@ -74,6 +75,8 @@ class GlassdoorOrchestrator:
                 json.dumps(r.raw_json)
             ))
         
+        logger.debug(f"Prepared {len(values)} records for Snowflake upsert.")
+        
         for val in values:
             await db.execute(MERGE_GLASSDOOR_REVIEWS, val)
             
@@ -97,6 +100,10 @@ class GlassdoorOrchestrator:
                     signal.change_readiness_score,
                     signal.overall_sentiment,
                     signal.review_count,
+                    signal.avg_rating,
+                    signal.current_employee_ratio,
+                    json.dumps(signal.positive_keywords_found),
+                    json.dumps(signal.negative_keywords_found),
                     signal.confidence_score
                 )
             )

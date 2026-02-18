@@ -3,6 +3,7 @@ import json
 import logging
 import httpx
 from datetime import datetime, date
+from decimal import Decimal
 from typing import List, Dict, Optional
 
 from app.config import settings
@@ -101,6 +102,7 @@ class GlassdoorCollector:
                     logger.info(f"Fetching Glassdoor reviews for {ticker} (ID: {glassdoor_id}), offset={current_offset}")
                     
                     response = await client.get(WEXTRACTOR_URL, params=params, timeout=30.0)
+                    logger.debug(f"Wextractor response status: {response.status_code}")
                     response.raise_for_status()
                     data = response.json()
                     
@@ -189,50 +191,91 @@ class GlassdoorCollector:
             return None
 
         # Initialize weighted sums
-        innov_score_sum = 0
-        data_score_sum = 0
-        ai_score_sum = 0
-        change_score_sum = 0
+        innov_score_sum = Decimal(0)
+        data_score_sum = Decimal(0)
+        ai_score_sum = Decimal(0)
+        change_score_sum = Decimal(0)
         
-        total_weight = 0.0
+        total_weight = Decimal(0)
+
+        # Evidence Aggregation
+        all_positive_keywords = set()
+        all_negative_keywords = set()
+
+        # Metrics
+        total_rating_sum = Decimal(0)
+        current_employee_count = 0
 
         for r in reviews:
+            # Metrics
+            total_rating_sum += Decimal(r.rating)
+            if r.is_current_employee:
+                current_employee_count += 1
+
             # 1. Combine text
             text = (r.pros or "") + " " + (r.cons or "")
             text = text.lower()
             
             # 2. Match Keywords (simple containment)
             # Innovation
-            innov_pos = sum(1 for hw in INNOVATION_POSITIVE if hw in text)
-            innov_neg = sum(1 for hw in INNOVATION_NEGATIVE if hw in text)
+            innov_pos = 0
+            for k in INNOVATION_POSITIVE:
+                if k in text:
+                    innov_pos += 1
+                    all_positive_keywords.add(k)
+            
+            innov_neg = 0
+            for k in INNOVATION_NEGATIVE:
+                if k in text:
+                    innov_neg += 1
+                    all_negative_keywords.add(k)
+            
             innov_net = innov_pos - innov_neg
 
             # Data
-            data_mentions = sum(1 for hw in DATA_DRIVEN_KEYWORDS if hw in text)
+            data_mentions = 0
+            for k in DATA_DRIVEN_KEYWORDS:
+                if k in text:
+                    data_mentions += 1
+                    all_positive_keywords.add(k)
 
             # AI
-            ai_mentions = sum(1 for hw in AI_AWARENESS_KEYWORDS if hw in text)
+            ai_mentions = 0
+            for k in AI_AWARENESS_KEYWORDS:
+                if k in text:
+                    ai_mentions += 1
+                    all_positive_keywords.add(k)
 
             # Change
-            change_pos = sum(1 for hw in CHANGE_POSITIVE if hw in text)
-            change_neg = sum(1 for hw in CHANGE_NEGATIVE if hw in text)
+            change_pos = 0
+            for k in CHANGE_POSITIVE:
+                if k in text:
+                    change_pos += 1
+                    all_positive_keywords.add(k)
+            
+            change_neg = 0
+            for k in CHANGE_NEGATIVE:
+                if k in text:
+                    change_neg += 1
+                    all_negative_keywords.add(k)
+            
             change_net = change_pos - change_neg
 
             # 3. Recency Weight
             days_old = (date.today() - r.review_date.date()).days
-            recency_weight = 1.0 if days_old < 730 else 0.5
+            recency_weight = Decimal("1.0") if days_old < 730 else Decimal("0.5")
             
             # 4. Employee Status Weight
-            employee_weight = 1.2 if r.is_current_employee else 1.0
+            employee_weight = Decimal("1.2") if r.is_current_employee else Decimal("1.0")
             
             weight = recency_weight * employee_weight
             total_weight += weight
 
             # Accumulate weighted contributions
-            innov_score_sum += innov_net * weight
-            data_score_sum += data_mentions * weight
-            ai_score_sum += ai_mentions * weight
-            change_score_sum += change_net * weight
+            innov_score_sum += Decimal(innov_net) * weight
+            data_score_sum += Decimal(data_mentions) * weight
+            ai_score_sum += Decimal(ai_mentions) * weight
+            change_score_sum += Decimal(change_net) * weight
             
         # 5. Calculate Component Scores (normalized 0-100)
         
@@ -240,27 +283,35 @@ class GlassdoorCollector:
             return None
 
         # Normalized to 0-100 range roughly
-        innov_final = (innov_score_sum / total_weight) * 50 + 50
-        change_final = (change_score_sum / total_weight) * 50 + 50
-        data_final = (data_score_sum / total_weight) * 100
-        ai_final = (ai_score_sum / total_weight) * 100
+        innov_final = (innov_score_sum / total_weight) * Decimal(50) + Decimal(50)
+        change_final = (change_score_sum / total_weight) * Decimal(50) + Decimal(50)
+        data_final = (data_score_sum / total_weight) * Decimal(100)
+        ai_final = (ai_score_sum / total_weight) * Decimal(100)
         
         # Clamp scores 0-100
-        def clamp(x): return max(0.0, min(100.0, x))
+        def clamp(x): return max(Decimal(0), min(Decimal(100), x))
         
         innov_final = clamp(innov_final)
         change_final = clamp(change_final)
         data_final = clamp(data_final)
         ai_final = clamp(ai_final)
+
+        logger.debug(f"Culture Component Scores for {reviews[0].ticker}: "
+                     f"Innov={innov_final}, Change={change_final}, "
+                     f"Data={data_final}, AI={ai_final}")
         
-        # 6. Overall Weighted Average
+        # 6. Overall Weighted Average (CORRECTED WEIGHTS)
         overall = (
-            0.20 * innov_final +
-            0.25 * data_final +
-            0.25 * ai_final +
-            0.30 * change_final
+            Decimal("0.30") * innov_final +   # Requirement: 30%
+            Decimal("0.25") * data_final +
+            Decimal("0.25") * ai_final +
+            Decimal("0.20") * change_final    # Requirement: 20%
         )
         
+        # Additional Metrics
+        avg_rating = total_rating_sum / Decimal(len(reviews))
+        current_employee_ratio = Decimal(current_employee_count) / Decimal(len(reviews))
+
         return CultureSignal(
             company_id=reviews[0].company_id,
             ticker=reviews[0].ticker,
@@ -269,7 +320,11 @@ class GlassdoorCollector:
             data_driven_score=round(data_final, 2),
             ai_awareness_score=round(ai_final, 2),
             change_readiness_score=round(change_final, 2),
-            overall_sentiment=round(overall, 2), # Using overall culture score as sentiment
+            overall_sentiment=round(overall, 2),
             review_count=len(reviews),
-            confidence_score=0.8 # Placeholder or calc based on volume
+            avg_rating=round(avg_rating, 2),
+            current_employee_ratio=round(current_employee_ratio, 2),
+            positive_keywords_found=list(all_positive_keywords),
+            negative_keywords_found=list(all_negative_keywords),
+            confidence_score=Decimal("0.8")
         )

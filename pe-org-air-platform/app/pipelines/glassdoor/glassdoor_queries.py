@@ -37,6 +37,8 @@ USING (SELECT
     %s AS company_id, %s AS ticker, %s AS batch_date, 
     %s AS innovation_score, %s AS data_driven_score, %s AS ai_awareness_score, 
     %s AS change_readiness_score, %s AS overall_sentiment, %s AS review_count, 
+    %s AS avg_rating, %s AS current_employee_ratio,
+    PARSE_JSON(%s) AS positive_keywords_found, PARSE_JSON(%s) AS negative_keywords_found,
     %s AS confidence_score
 ) AS source
 ON target.company_id = source.company_id AND target.batch_date = source.batch_date
@@ -48,16 +50,24 @@ WHEN MATCHED THEN UPDATE SET
     change_readiness_score = source.change_readiness_score,
     overall_sentiment = source.overall_sentiment,
     review_count = source.review_count,
+    avg_rating = source.avg_rating,
+    current_employee_ratio = source.current_employee_ratio,
+    positive_keywords_found = source.positive_keywords_found,
+    negative_keywords_found = source.negative_keywords_found,
     confidence_score = source.confidence_score,
     updated_at = CURRENT_TIMESTAMP
 WHEN NOT MATCHED THEN INSERT (
     company_id, ticker, batch_date, innovation_score, data_driven_score, 
     ai_awareness_score, change_readiness_score, overall_sentiment, 
-    review_count, confidence_score, created_at, updated_at
+    review_count, avg_rating, current_employee_ratio, 
+    positive_keywords_found, negative_keywords_found,
+    confidence_score, created_at, updated_at
 ) VALUES (
     source.company_id, source.ticker, source.batch_date, source.innovation_score, source.data_driven_score, 
     source.ai_awareness_score, source.change_readiness_score, source.overall_sentiment, 
-    source.review_count, source.confidence_score, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+    source.review_count, source.avg_rating, source.current_employee_ratio,
+    source.positive_keywords_found, source.negative_keywords_found,
+    source.confidence_score, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 )
 """
 
@@ -95,13 +105,17 @@ CREATE TABLE IF NOT EXISTS culture_scores (
     company_id STRING,
     ticker STRING,
     batch_date DATE,
-    innovation_score FLOAT,
-    data_driven_score FLOAT,
-    ai_awareness_score FLOAT,
-    change_readiness_score FLOAT,
-    overall_sentiment FLOAT,
+    innovation_score NUMBER(10, 2),
+    data_driven_score NUMBER(10, 2),
+    ai_awareness_score NUMBER(10, 2),
+    change_readiness_score NUMBER(10, 2),
+    overall_sentiment NUMBER(10, 2),
     review_count INTEGER,
-    confidence_score FLOAT,
+    avg_rating NUMBER(10, 2),
+    current_employee_ratio NUMBER(10, 2),
+    positive_keywords_found VARIANT,
+    negative_keywords_found VARIANT,
+    confidence_score NUMBER(10, 2),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP(),
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP(),
     PRIMARY KEY (company_id, batch_date)

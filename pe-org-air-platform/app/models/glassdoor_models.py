@@ -26,14 +26,20 @@ class GlassdoorReview(BaseModel):
     business_outlook: Optional[str] = None
     raw_json: Optional[Dict] = None
 
+from decimal import Decimal
+
 class CultureSignal(BaseModel):
     company_id: str
     ticker: str
     batch_date: date
-    innovation_score: float
-    data_driven_score: float
-    ai_awareness_score: float
-    change_readiness_score: float
-    overall_sentiment: float
+    innovation_score: Decimal
+    data_driven_score: Decimal
+    ai_awareness_score: Decimal
+    change_readiness_score: Decimal
+    overall_sentiment: Decimal
     review_count: int
-    confidence_score: float
+    avg_rating: Decimal
+    current_employee_ratio: Decimal
+    positive_keywords_found: list[str] = []
+    negative_keywords_found: list[str] = []
+    confidence_score: Decimal
