@@ -5,7 +5,7 @@ from typing import List, Dict
 
 from app.services.s3_storage import aws_service
 from app.services.snowflake import db
-from app.pipelines.glassdoor.glassdoor_collector import GlassdoorCollector, COMPANY_IDS
+from app.pipelines.glassdoor.glassdoor_collector import GlassdoorCultureCollector, COMPANY_IDS
 from app.pipelines.glassdoor.glassdoor_queries import MERGE_GLASSDOOR_REVIEWS, INSERT_CULTURE_SIGNAL, CREATE_GLASSDOOR_REVIEWS_TABLE, CREATE_CULTURE_SCORES_TABLE
 from app.models.glassdoor_models import GlassdoorReview, CultureSignal
 
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class GlassdoorOrchestrator:
     def __init__(self):
-        self.collector = GlassdoorCollector()
+        self.collector = GlassdoorCultureCollector()
 
     async def save_raw_to_s3(self, ticker: str, reviews: List[Dict]) -> str:
         """
@@ -104,7 +104,7 @@ class GlassdoorOrchestrator:
                     signal.current_employee_ratio,
                     json.dumps(signal.positive_keywords_found),
                     json.dumps(signal.negative_keywords_found),
-                    signal.confidence_score
+                    signal.confidence
                 )
             )
             logger.info("Successfully saved culture signal.")

@@ -1,8 +1,10 @@
+from dataclasses import dataclass, field
 from datetime import datetime, date
-from typing import Optional, Dict
-from pydantic import BaseModel
+from typing import Optional, Dict, List
+from decimal import Decimal
 
-class GlassdoorReview(BaseModel):
+@dataclass
+class GlassdoorReview:
     id: str
     company_id: str
     ticker: str
@@ -26,9 +28,8 @@ class GlassdoorReview(BaseModel):
     business_outlook: Optional[str] = None
     raw_json: Optional[Dict] = None
 
-from decimal import Decimal
-
-class CultureSignal(BaseModel):
+@dataclass
+class CultureSignal:
     company_id: str
     ticker: str
     batch_date: date
@@ -40,6 +41,6 @@ class CultureSignal(BaseModel):
     review_count: int
     avg_rating: Decimal
     current_employee_ratio: Decimal
-    positive_keywords_found: list[str] = []
-    negative_keywords_found: list[str] = []
-    confidence_score: Decimal
+    positive_keywords_found: List[str] = field(default_factory=list)
+    negative_keywords_found: List[str] = field(default_factory=list)
+    confidence: Decimal = Decimal(0)
