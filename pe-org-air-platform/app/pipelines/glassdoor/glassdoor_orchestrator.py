@@ -122,7 +122,7 @@ class GlassdoorOrchestrator:
         except Exception as e:
             logger.error(f"Failed to initialize tables: {e}")
 
-    async def run_pipeline(self, ticker: str, glassdoor_id: str = None, limit: int = 20):
+    async def run_pipeline(self, ticker: str, glassdoor_id: str = None, limit: int = 20, force_refresh: bool = False):
         # 0. Ensure tables exist
         await self.initialize_tables()
 
@@ -139,7 +139,7 @@ class GlassdoorOrchestrator:
         s3_key = f"raw/glassdoor/{ticker}/{date_str}.json"
         
         raw_reviews = None
-        if aws_service.file_exists(s3_key):
+        if not force_refresh and aws_service.file_exists(s3_key):
             logger.info(f"Found existing raw data for {ticker} in S3: {s3_key}")
             raw_reviews = aws_service.read_json(s3_key)
 
@@ -172,7 +172,7 @@ class GlassdoorOrchestrator:
         # 6. Persist Culture Signal
         await self.save_culture_signal(signal)
 
-    async def run_batch(self, companies: List[Dict[str, str]], limit: int = 20):
+    async def run_batch(self, companies: List[Dict[str, str]], limit: int = 20, force_refresh: bool = False):
         """
         Run pipeline for multiple companies.
         Expects a list of dicts: [{"ticker": "NVDA", "id": "7633"}, ...]
@@ -182,4 +182,4 @@ class GlassdoorOrchestrator:
             ticker = comp.get("ticker")
             gid = comp.get("id")
             if ticker:
-                await self.run_pipeline(ticker, glassdoor_id=gid, limit=limit)
+                await self.run_pipeline(ticker, glassdoor_id=gid, limit=limit, force_refresh=force_refresh)
