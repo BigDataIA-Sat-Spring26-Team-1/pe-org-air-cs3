@@ -59,5 +59,21 @@ class AWSService:
             logger.error("upload_bytes_failed", error=str(e), key=s3_key)
             return False
 
+    def read_json(self, s3_key: str) -> dict | list | None:
+        """Read a JSON file from S3."""
+        if not self.s3_client:
+            return None
+        try:
+            import json
+            response = self.s3_client.get_object(Bucket=self.bucket, Key=s3_key)
+            content = response["Body"].read().decode("utf-8")
+            return json.loads(content)
+        except ClientError as e:
+            logger.error("read_json_failed", error=str(e), key=s3_key)
+            return None
+        except Exception as e:
+            logger.error("read_json_parse_error", error=str(e), key=s3_key)
+            return None
+
 
 aws_service = AWSService()
