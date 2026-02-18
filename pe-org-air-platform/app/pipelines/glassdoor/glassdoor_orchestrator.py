@@ -6,8 +6,8 @@ from typing import List, Dict
 from app.services.s3_storage import aws_service
 from app.services.snowflake import db
 from app.pipelines.glassdoor.glassdoor_collector import GlassdoorCollector, COMPANY_IDS
-from app.pipelines.glassdoor.glassdoor_queries import MERGE_GLASSDOOR_REVIEWS, INSERT_CULTURE_SIGNAL
-from app.models.glassdoor_model import GlassdoorReview, CultureSignal
+from app.pipelines.glassdoor.glassdoor_queries import MERGE_GLASSDOOR_REVIEWS, INSERT_CULTURE_SIGNAL, CREATE_GLASSDOOR_REVIEWS_TABLE, CREATE_CULTURE_SCORES_TABLE
+from app.models.glassdoor_models import GlassdoorReview, CultureSignal
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,21 @@ class GlassdoorOrchestrator:
         except Exception as e:
             logger.error(f"Failed to save culture signal: {e}")
 
+    async def initialize_tables(self):
+        """
+        Ensure Snowflake tables exist before running the pipeline.
+        """
+        try:
+            await db.execute(CREATE_GLASSDOOR_REVIEWS_TABLE)
+            await db.execute(CREATE_CULTURE_SCORES_TABLE)
+            logger.info("Verified/Created Glassdoor tables in Snowflake.")
+        except Exception as e:
+            logger.error(f"Failed to initialize tables: {e}")
+
     async def run_pipeline(self, ticker: str, glassdoor_id: str = None, limit: int = 20):
+        # 0. Ensure tables exist
+        await self.initialize_tables()
+
         # Resolve ID first
         if not glassdoor_id:
             glassdoor_id = COMPANY_IDS.get(ticker)

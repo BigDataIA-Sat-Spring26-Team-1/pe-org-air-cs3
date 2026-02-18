@@ -6,7 +6,7 @@ from datetime import datetime, date
 from typing import List, Dict, Optional
 
 from app.config import settings
-from app.models.glassdoor_model import GlassdoorReview, CultureSignal
+from app.models.glassdoor_models import GlassdoorReview, CultureSignal
 
 logger = logging.getLogger(__name__)
 
