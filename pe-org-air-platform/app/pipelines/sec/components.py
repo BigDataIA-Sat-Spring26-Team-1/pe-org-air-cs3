@@ -48,7 +48,7 @@ async def download_ticker_filings(
     )
     
     # Updated to use synchronous method
-    downloader.download_ticker(ticker, filing_types, limit_per_type)
+    downloader.download_ticker(ticker, filing_types, limit)
     
     # We can skip returning metadatas here since discovery happens in next task
     # But if we want stats:
