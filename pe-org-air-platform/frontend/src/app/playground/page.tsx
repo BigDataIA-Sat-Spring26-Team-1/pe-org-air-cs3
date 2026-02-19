@@ -304,7 +304,18 @@ export default function Playground() {
 
             const res = await fetch(`${API_BASE}${finalPath}`, options);
             setStatus(res.status);
-            const data = await res.json();
+
+            let data;
+            if (res.status === 204) {
+                data = { message: "Company Deleted" };
+            } else {
+                const text = await res.text();
+                try {
+                    data = text ? JSON.parse(text) : { message: "Success" };
+                } catch (e) {
+                    data = { message: "Response received but could not be parsed as JSON", raw: text };
+                }
+            }
             setResponse(data);
         } catch (err) {
             setResponse({ error: "Request failed", details: String(err) });

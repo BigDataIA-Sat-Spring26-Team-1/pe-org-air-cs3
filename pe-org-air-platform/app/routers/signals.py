@@ -280,9 +280,20 @@ async def get_signals_by_category(
     if signals:
         signal_models = []
         for s in signals:
-            if hasattr(s.get('signal_date'), 'isoformat'):
-                s['signal_date'] = s['signal_date'].isoformat()
-            signal_models.append(ExternalSignal(**s))
+            try:
+                # Handle Snowflake Date objects
+                if hasattr(s.get('signal_date'), 'isoformat'):
+                    s['signal_date'] = s['signal_date'].isoformat()
+                
+                # Parse JSON strings if needed
+                if isinstance(s.get('metadata'), str):
+                    s['metadata'] = json.loads(s['metadata'])
+                    
+                signal_models.append(ExternalSignal(**s))
+            except Exception as err:
+                logger.warning(f"Failed to parse signal in category {category}: {err}")
+                continue
+        
         cache.set_list(cache_key, signal_models, 86400)
         return signal_models
         

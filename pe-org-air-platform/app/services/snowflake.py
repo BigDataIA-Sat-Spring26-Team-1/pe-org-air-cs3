@@ -536,7 +536,9 @@ class SnowflakeService:
         params = [company_id]
         if category:
             query += " AND category = %s"
-            params.append(category)
+            # Ensure Enum is converted to string for Snowflake binding
+            cat_val = category.value if hasattr(category, 'value') else category
+            params.append(cat_val)
         query += " ORDER BY signal_date DESC LIMIT %s OFFSET %s"
         params.extend([limit, offset])
         return await self.fetch_all(query, tuple(params))
@@ -546,7 +548,9 @@ class SnowflakeService:
         params = [company_id]
         if category:
             query += " AND category = %s"
-            params.append(category)
+            # Ensure Enum is converted to string for Snowflake binding
+            cat_val = category.value if hasattr(category, 'value') else category
+            params.append(cat_val)
         query += " ORDER BY evidence_date DESC LIMIT %s OFFSET %s"
         params.extend([limit, offset])
         return await self.fetch_all(query, tuple(params))
