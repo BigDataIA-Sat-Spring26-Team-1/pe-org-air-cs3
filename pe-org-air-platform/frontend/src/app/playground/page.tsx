@@ -20,7 +20,8 @@ import {
     Plus,
     Trash2,
     AlertCircle,
-    Info
+    Info,
+    Users
 } from "lucide-react";
 
 interface ParamDef {
@@ -101,6 +102,16 @@ const CATEGORIES: any[] = [
             { tag: "Signals", name: "List Evidence", method: 'GET', path: '/api/v1/signals/evidence', description: "Supporting links/docs" },
             { tag: "Signals", name: "Get Company Summary", method: 'GET', path: '/api/v1/signals/summary', description: "Get company summary" },
             { tag: "Signals", name: "Get Signals by Category", method: 'GET', path: '/api/v1/signals/details/{category}', description: "Get signals by category" },
+        ]
+    },
+    {
+        name: "Culture & Glassdoor",
+        tag: "Culture",
+        icon: <Users size={16} />,
+        endpoints: [
+            { tag: "Culture", name: "Collect Glassdoor Reviews", method: 'POST', path: '/api/v1/signals/collect/glassdoor', description: "Trigger Glassdoor sentiment analysis", queryParams: [{ name: 'ticker', type: 'string', required: true }, { name: 'limit', type: 'number', required: false, default: 20 }] },
+            { tag: "Culture", name: "Get Culture Scores", method: 'GET', path: '/api/v1/signals/culture/{ticker}', description: "Retrieve aggregated sentiment metrics" },
+            { tag: "Culture", name: "Get Glassdoor Evidence", method: 'GET', path: '/api/v1/signals/culture/reviews/{ticker}', description: "View raw employee pros/cons", queryParams: [{ name: 'limit', type: 'number', required: false, default: 50 }, { name: 'offset', type: 'number', required: false, default: 0 }] },
         ]
     },
     {

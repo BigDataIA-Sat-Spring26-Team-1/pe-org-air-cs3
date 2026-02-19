@@ -20,7 +20,10 @@ import {
     FileText,
     ShieldCheck,
     Search,
-    Download
+    Download,
+    Users,
+    MessageSquare,
+    Smile
 } from "lucide-react";
 import Link from "next/link";
 
@@ -73,16 +76,42 @@ interface CompanyMetrics {
     filings: number;
 }
 
+interface CultureScores {
+    innovation_score: number;
+    data_driven_score: number;
+    ai_awareness_score: number;
+    change_readiness_score: number;
+    overall_sentiment: number;
+    review_count: number;
+    avg_rating: number;
+    confidence: number;
+    positive_keywords_found: string[];
+    negative_keywords_found: string[];
+}
+
+interface GlassdoorReview {
+    id: string;
+    review_date: string;
+    rating: number;
+    title: string;
+    pros: string;
+    cons: string;
+    job_title: string;
+    is_current_employee: boolean;
+}
+
 export default function AuditPage({ params }: { params: Promise<{ id: string }> }) {
     const { id: companyId } = use(params);
     const [signals, setSignals] = useState<Signal[]>([]);
     const [evidence, setEvidence] = useState<Evidence[]>([]);
     const [documents, setDocuments] = useState<Document[]>([]);
+    const [culture, setCulture] = useState<CultureScores | null>(null);
+    const [gdReviews, setGdReviews] = useState<GlassdoorReview[]>([]);
     const [company, setCompany] = useState<Company | null>(null);
     const [summary, setSummary] = useState<SignalSummary | null>(null);
     const [metrics, setMetrics] = useState<CompanyMetrics | null>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'signals' | 'evidence' | 'filings'>('signals');
+    const [activeTab, setActiveTab] = useState<'signals' | 'evidence' | 'filings' | 'culture'>('signals');
     const [evidencePage, setEvidencePage] = useState(1);
     const [filingsPage, setFilingsPage] = useState(1);
     const PAGE_SIZE = 10;
@@ -97,12 +126,14 @@ export default function AuditPage({ params }: { params: Promise<{ id: string }> 
                 const companyData = await compRes.json();
                 setCompany(companyData);
 
-                const [sigRes, evRes, docRes, sumRes, metRes] = await Promise.all([
+                const [sigRes, evRes, docRes, sumRes, metRes, culRes, revRes] = await Promise.all([
                     fetch(`${API_BASE}/api/v1/signals/?ticker=${companyData.ticker}`),
                     fetch(`${API_BASE}/api/v1/signals/evidence?company_id=${companyId}&limit=${PAGE_SIZE}&offset=${(evidencePage - 1) * PAGE_SIZE}`),
                     fetch(`${API_BASE}/api/v1/documents?company=${companyData.ticker}&limit=${PAGE_SIZE}&offset=${(filingsPage - 1) * PAGE_SIZE}`),
                     fetch(`${API_BASE}/api/v1/signals/summary?ticker=${companyData.ticker}`),
-                    fetch(`${API_BASE}/api/v1/metrics/company-stats?company_id=${companyId}`)
+                    fetch(`${API_BASE}/api/v1/metrics/company-stats?company_id=${companyId}`),
+                    fetch(`${API_BASE}/api/v1/signals/culture/${companyData.ticker}`),
+                    fetch(`${API_BASE}/api/v1/signals/culture/reviews/${companyData.ticker}?limit=20`)
                 ]);
 
                 if (sigRes.ok) setSignals(await sigRes.json());
@@ -116,6 +147,11 @@ export default function AuditPage({ params }: { params: Promise<{ id: string }> 
                     const metData = await metRes.json();
                     setMetrics(metData[0] || null);
                 }
+                if (culRes.ok) {
+                    const culData = await culRes.json();
+                    if (!culData.message) setCulture(culData);
+                }
+                if (revRes.ok) setGdReviews(await revRes.json());
 
             } catch (err) {
                 console.error("Failed to fetch audit data:", err);
@@ -196,6 +232,7 @@ export default function AuditPage({ params }: { params: Promise<{ id: string }> 
                     <TabButton active={activeTab === 'signals'} onClick={() => setActiveTab('signals')} label="Signals" icon={<Activity size={16} />} />
                     <TabButton active={activeTab === 'evidence'} onClick={() => setActiveTab('evidence')} label="Evidence" icon={<ShieldCheck size={16} />} />
                     <TabButton active={activeTab === 'filings'} onClick={() => setActiveTab('filings')} label="SEC Filings" icon={<FileText size={16} />} />
+                    <TabButton active={activeTab === 'culture'} onClick={() => setActiveTab('culture')} label="Workforce" icon={<Users size={16} />} />
                 </div>
 
                 <div className="bg-[#0c0c0e] border border-slate-800 rounded-3xl overflow-hidden shadow-2xl min-h-[500px]">
@@ -242,6 +279,97 @@ export default function AuditPage({ params }: { params: Promise<{ id: string }> 
                                     pageSize={PAGE_SIZE}
                                     onPageChange={setFilingsPage}
                                 />
+                            )}
+                        </div>
+                    )}
+
+                    {activeTab === 'culture' && (
+                        <div className="p-8 space-y-8">
+                            {culture ? (
+                                <>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                        <div className="space-y-6">
+                                            <h3 className="text-xl font-black text-white flex items-center gap-2">
+                                                <Activity className="text-blue-500" size={20} />
+                                                Culture Intelligence
+                                            </h3>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <CultureMetric label="Innovation" score={culture.innovation_score} />
+                                                <CultureMetric label="AI Awareness" score={culture.ai_awareness_score} />
+                                                <CultureMetric label="Data Driven" score={culture.data_driven_score} />
+                                                <CultureMetric label="Change Readiness" score={culture.change_readiness_score} />
+                                            </div>
+                                            <div className="p-6 bg-blue-500/5 rounded-2xl border border-blue-500/10">
+                                                <div className="flex justify-between items-end mb-4">
+                                                    <div>
+                                                        <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Overall Sentiment</div>
+                                                        <div className="text-3xl font-black text-white">{(culture.overall_sentiment * 100).toFixed(1)}%</div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Rating</div>
+                                                        <div className="text-2xl font-black text-blue-400">{culture.avg_rating.toFixed(1)} / 5.0</div>
+                                                    </div>
+                                                </div>
+                                                <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                                                    <div
+                                                        className="bg-blue-500 h-full transition-all duration-1000"
+                                                        style={{ width: `${culture.overall_sentiment * 100}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-6">
+                                            <h3 className="text-xl font-black text-white flex items-center gap-2">
+                                                <Search className="text-purple-500" size={20} />
+                                                Keyword Analysis
+                                            </h3>
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <div className="text-[10px] font-black text-green-500 uppercase tracking-widest mb-2 flex items-center gap-1">
+                                                        <Smile size={12} /> Positive Drivers
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {culture.positive_keywords_found.map(kw => (
+                                                            <span key={kw} className="px-3 py-1 bg-green-500/10 text-green-400 border border-green-500/20 rounded-full text-xs font-medium lowercase">
+                                                                {kw}
+                                                            </span>
+                                                        ))}
+                                                        {culture.positive_keywords_found.length === 0 && <span className="text-slate-600 text-xs italic">No positive keywords detected</span>}
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-2 flex items-center gap-1">
+                                                        <Activity size={12} /> Friction Points
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {culture.negative_keywords_found.map(kw => (
+                                                            <span key={kw} className="px-3 py-1 bg-red-500/10 text-red-400 border border-red-500/20 rounded-full text-xs font-medium lowercase">
+                                                                {kw}
+                                                            </span>
+                                                        ))}
+                                                        {culture.negative_keywords_found.length === 0 && <span className="text-slate-600 text-xs italic">No negative keywords detected</span>}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-6 pt-8 border-t border-slate-800/50">
+                                        <h3 className="text-xl font-black text-white flex items-center gap-2">
+                                            <MessageSquare className="text-orange-500" size={20} />
+                                            Employee Evidence
+                                        </h3>
+                                        <div className="grid grid-cols-1 gap-4">
+                                            {gdReviews.map(r => (
+                                                <ReviewRow key={r.id} review={r} />
+                                            ))}
+                                            {gdReviews.length === 0 && <EmptyState label="No employee reviews found" />}
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <EmptyState label="No workforce culture data available. Trigger collection in Playground." />
                             )}
                         </div>
                     )}
@@ -424,6 +552,58 @@ function EmptyState({ label }: { label: string }) {
                 <Search size={32} />
             </div>
             <p className="text-slate-500 text-sm font-medium italic">{label}</p>
+        </div>
+    );
+}
+
+function CultureMetric({ label, score }: { label: string, score: number }) {
+    return (
+        <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-2xl">
+            <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">{label}</div>
+            <div className="flex items-center gap-3">
+                <div className="text-xl font-black text-white">{score.toFixed(1)}</div>
+                <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                        className="bg-blue-500 h-full"
+                        style={{ width: `${(score / 5) * 100}%` }}
+                    />
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function ReviewRow({ review }: { review: GlassdoorReview }) {
+    return (
+        <div className="p-6 bg-slate-900/30 border border-slate-800/50 rounded-2xl hover:border-slate-700 transition-all space-y-4">
+            <div className="flex justify-between items-start">
+                <div>
+                    <h4 className="font-bold text-white text-lg leading-tight">{review.title}</h4>
+                    <div className="flex items-center gap-3 mt-1 text-xs text-slate-500 font-medium">
+                        <span className="px-2 py-0.5 bg-slate-800 rounded text-slate-400">{review.job_title}</span>
+                        <span>•</span>
+                        <span>{new Date(review.review_date).toLocaleDateString()}</span>
+                        <span>•</span>
+                        <span className={review.is_current_employee ? "text-green-500" : "text-amber-500"}>
+                            {review.is_current_employee ? "Current Employee" : "Former Employee"}
+                        </span>
+                    </div>
+                </div>
+                <div className="flex items-center gap-1 bg-blue-500/10 text-blue-400 px-3 py-1 rounded-full border border-blue-500/20">
+                    <Smile size={14} />
+                    <span className="font-black text-sm">{review.rating.toFixed(1)}</span>
+                </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div className="space-y-1">
+                    <div className="text-[10px] font-black text-green-500 uppercase tracking-widest">Pros</div>
+                    <p className="text-slate-300 italic">"{review.pros}"</p>
+                </div>
+                <div className="space-y-1">
+                    <div className="text-[10px] font-black text-red-500 uppercase tracking-widest">Cons</div>
+                    <p className="text-slate-400 italic">"{review.cons}"</p>
+                </div>
+            </div>
         </div>
     );
 }

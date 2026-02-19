@@ -799,4 +799,25 @@ class SnowflakeService:
         """
         return await self.fetch_all(query)
 
+    # Glassdoor & Culture
+    async def fetch_culture_scores(self, ticker: str, limit: int = 1) -> List[Dict[str, Any]]:
+        """Fetch latest culture scores for a company."""
+        query = """
+            SELECT * FROM culture_scores 
+            WHERE ticker = %s 
+            ORDER BY batch_date DESC 
+            LIMIT %s
+        """
+        return await self.fetch_all(query, (ticker, limit))
+
+    async def fetch_glassdoor_reviews(self, ticker: str, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+        """Fetch granular Glassdoor reviews for audit trails."""
+        query = """
+            SELECT * FROM glassdoor_reviews 
+            WHERE ticker = %s 
+            ORDER BY review_date DESC 
+            LIMIT %s OFFSET %s
+        """
+        return await self.fetch_all(query, (ticker, limit, offset))
+
 db = SnowflakeService()
