@@ -124,6 +124,23 @@ const CATEGORIES: any[] = [
         ]
     },
     {
+        name: "Analytical Integration",
+        tag: "Integration",
+        icon: <Brain size={16} />,
+        endpoints: [
+            {
+                tag: "Integration",
+                name: "Run Integration Pipeline",
+                method: 'POST',
+                path: '/api/v1/integration/run',
+                description: "Force real-time deep scoring for one or more tickers (Board + SEC + Talent + Culture)",
+                body: {
+                    tickers: ["NVDA", "JPM", "GE"]
+                }
+            },
+        ]
+    },
+    {
         name: "Assessments",
         tag: "Assessments",
         icon: <Brain size={16} />,

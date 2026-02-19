@@ -752,6 +752,28 @@ class SnowflakeService:
         """
         return await self.fetch_all(query)
 
+    async def fetch_deep_assessments_leaderboard(self) -> List[Dict[str, Any]]:
+        """Fetch the latest high-fidelity integrated assessment for each company."""
+        query = """
+            WITH LatestAssessments AS (
+                SELECT 
+                    a.id, a.company_id, a.v_r_score, a.h_r_score, a.synergy_score, 
+                    a.org_air_score, a.confidence_score, a.assessment_date,
+                    ROW_NUMBER() OVER (PARTITION BY a.company_id ORDER BY a.assessment_date DESC, a.created_at DESC) as rn
+                FROM assessments a
+                WHERE a.assessment_type = 'INTEGRATED_CS3'
+            )
+            SELECT 
+                c.id as company_id, c.ticker, c.name as company_name,
+                la.v_r_score, la.h_r_score, la.synergy_score, la.org_air_score, la.confidence_score,
+                la.assessment_date
+            FROM companies c
+            JOIN LatestAssessments la ON c.id = la.company_id
+                AND la.rn = 1
+            ORDER BY la.org_air_score DESC
+        """
+        return await self.fetch_all(query)
+
     async def fetch_documents_distribution(self) -> List[Dict[str, Any]]:
         query = """
             SELECT 
