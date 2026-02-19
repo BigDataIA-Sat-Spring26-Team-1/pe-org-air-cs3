@@ -122,14 +122,7 @@ class GlassdoorOrchestrator:
         # 2. Snowflake
         await self.save_reviews_to_snowflake(parsed_reviews)
         
-        # 3. Analyze
-        signal = self.collector.analyze_reviews(glassdoor_id, ticker, parsed_reviews)
-        logger.info(f"Culture Signal for {ticker}: {signal}")
-        
-        # 4. Persist Culture Signal
-        await self.save_culture_signal(signal)
-        
-        return {"reviews": len(parsed_reviews), "signals": 1 if signal else 0}
+        return {"reviews": len(parsed_reviews), "signals": 0}
 
     async def run_batch(self, companies: List[Dict[str, str]], limit: int = 20, force_refresh: bool = False):
         """

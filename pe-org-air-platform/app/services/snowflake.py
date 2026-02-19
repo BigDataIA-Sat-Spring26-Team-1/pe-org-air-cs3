@@ -555,10 +555,10 @@ class SnowflakeService:
         params.extend([limit, offset])
         return await self.fetch_all(query, tuple(params))
 
-    async def fetch_job_descriptions_for_talent(self, company_id: str, limit: int = 500) -> List[str]:
-        """Fetch raw job descriptions specifically for talent concentration analysis."""
+    async def fetch_job_descriptions_for_talent(self, company_id: str, limit: int = 500) -> List[Dict[str, str]]:
+        """Fetch job titles and descriptions specifically for talent concentration analysis."""
         query = """
-            SELECT description 
+            SELECT title, description 
             FROM signal_evidence 
             WHERE company_id = %s 
             AND category = 'technology_hiring'
@@ -566,7 +566,7 @@ class SnowflakeService:
             LIMIT %s
         """
         rows = await self.fetch_all(query, (company_id, limit))
-        return [row['description'] for row in rows if row.get('description')]
+        return [{"title": row.get('title', ''), "description": row['description']} for row in rows]
 
     async def fetch_glassdoor_reviews_for_talent(self, company_id: str, limit: int = 1000) -> List[Dict[str, Any]]:
         """Fetch Glassdoor reviews (titles and text) for key-person risk analysis."""
@@ -646,6 +646,25 @@ class SnowflakeService:
         """
         params.extend([limit, offset])
         return await self.fetch_all(query, tuple(params))
+
+    async def fetch_sec_chunks_by_company(self, company_id: str, limit: int = 500) -> List[Dict[str, Any]]:
+        """Fetch chunks across all documents belonging to a company."""
+        # Join documents to companies to find all chunks for a specific company
+        query = """
+            SELECT dc.chunk_id, dc.section_name, dc.chunk_text, dc.chunk_index
+            FROM document_chunks dc
+            JOIN documents d ON dc.document_id = d.document_id
+            JOIN companies c ON (
+                UPPER(d.cik) = UPPER(c.cik) OR 
+                UPPER(d.cik) = UPPER(c.ticker) OR 
+                UPPER(d.company_name) = UPPER(c.name) OR 
+                UPPER(d.company_name) = UPPER(c.ticker)
+            )
+            WHERE c.id = %s
+            ORDER BY d.created_at DESC, dc.chunk_index ASC
+            LIMIT %s
+        """
+        return await self.fetch_all(query, (company_id, limit))
 
     # Analytical Metrics
     async def fetch_industry_distribution(self) -> List[Dict[str, Any]]:

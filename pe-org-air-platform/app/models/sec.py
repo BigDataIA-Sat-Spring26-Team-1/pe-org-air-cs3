@@ -70,6 +70,7 @@ class SecCollectRequest(BaseModel):
     }
 
 class FilingMetadata(BaseModel):
+    ticker: str
     cik: str
     company_name: str
     filing_type: str

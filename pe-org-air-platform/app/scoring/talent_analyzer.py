@@ -190,11 +190,9 @@ class TalentConcentrationCalculator:
         analyzer = cls()
         
         # 1. Fetch Job Descriptions from Snowflake (Hiring Pipeline)
-        job_descs = await db_service.fetch_job_descriptions_for_talent(company_id)
+        job_list = await db_service.fetch_job_descriptions_for_talent(company_id)
         
         # 2. Analyze Jobs
-        # Note: We wrap descriptions in basic dicts for analyze_job_postings compatibility
-        job_list = [{"title": "", "description": d} for d in job_descs]
         job_analysis = analyzer.analyze_job_postings(job_list)
         
         # 3. Fetch Glassdoor Reviews from Snowflake (Signal Pipeline)

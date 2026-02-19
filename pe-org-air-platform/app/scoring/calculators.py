@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 import structlog
 from .utils import weighted_mean, clamp, to_decimal, coefficient_of_variation, weighted_std_dev
 from app.services.sector_config import sector_config

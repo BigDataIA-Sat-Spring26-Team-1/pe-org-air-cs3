@@ -4,7 +4,7 @@ import json
 import hashlib
 from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import List, Dict, Any, Optional, Tuple
 import structlog
 import pdfkit
 from concurrent.futures import ProcessPoolExecutor
@@ -260,6 +260,7 @@ class SecPipeline:
 
     async def _save_to_db(self, doc_data):
         doc_id = doc_data["doc_id"]
+        meta = doc_data["meta"]
         content_hash = doc_data["content_hash"]
         all_chunks = doc_data["all_chunks"]
 
@@ -267,16 +268,18 @@ class SecPipeline:
         await db.create_sec_document(doc_data)
 
         chunk_params = []
+        full_text = ""
         for ch in all_chunks:
             chunk_id = f"{doc_id}_{ch['index']}"
             chunk_params.append((
                 chunk_id, doc_id, ch['index'],
                 ch['section'], ch['text'], ch['tokens']
             ))
+            full_text += f"\n {ch['text']}"
 
         if chunk_params:
             await db.create_sec_document_chunks_bulk(chunk_params)
-
+        
         self.registry.add(content_hash)
         
         # Invalidate cache for this document so API sees latest status

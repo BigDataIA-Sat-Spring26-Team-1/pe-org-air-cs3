@@ -29,13 +29,19 @@ class MasterPipeline:
 
         logger.info(f"--- Starting AI Audit for {company_name} ({ticker}) ---")
 
-        # Fetch job signals
+        # 1. Fetch job signals first (needed as input for tech stack analysis)
         job_res = await self.job_collector.collect(company_name, days=job_days, ticker=ticker)
         
-        # Parallel collection of other signals
+        # 2. Extract job evidence/descriptions for tech stack analyzer
+        job_docs = []
+        if job_res and hasattr(job_res, "evidence"):
+            for item in job_res.evidence:
+                job_docs.append({"description": item.description})
+
+        # 3. Parallel collection of other signals
         tasks = {
             "Innovation (Patents)": self.patent_collector.collect(company_name, years=patent_years, ticker=ticker),
-            "Digital Presence (Tech Stack)": self.tech_collector.collect(company_name, ticker=ticker),
+            "Digital Presence (Tech Stack)": self.tech_collector.collect(company_name, ticker=ticker, job_evidence=job_docs),
             "Leadership Signals": self.lead_collector.collect(company_name, ticker=ticker)
         }
         

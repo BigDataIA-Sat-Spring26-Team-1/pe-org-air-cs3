@@ -140,39 +140,48 @@ class TechStackCollector:
         similarity = SequenceMatcher(None, l_name, t_name).ratio()
         return similarity > 0.75
 
-    def _analyze_job_mentions(self, company: str, ticker: str = None) -> List[Dict[str, str]]:
+    async def _analyze_job_mentions(self, company: str, ticker: str = None, job_evidence: List[Dict[str, Any]] = None) -> List[Dict[str, str]]:
         """Harvest internal tech mentions from job descriptions."""
         found = []
-        if os.path.exists(self.jobs_file):
+        combined_text = ""
+        
+        # 1. Use results from JobCollector if provided
+        if job_evidence:
+            combined_text = " ".join([j.get('description', '') for j in job_evidence]).lower()
+        
+        # 2. Fallback: Fetch from Snowflake if we have a db client
+        else:
             try:
-                df = pd.read_csv(self.jobs_file)
-                if 'company' in df.columns:
-                    # Filter matching jobs
-                    matching_jobs = df[df['company'].apply(lambda x: self._is_matching_company(x, company, ticker))]
-                    
-                    if not matching_jobs.empty:
-                        combined_text = " ".join(matching_jobs['description'].fillna("").astype(str)).lower()
-                        
-                        seen = set()
-                        for cat, techs in self.TECH_INDICATORS.items():
-                            for tech in techs:
-                                # Use regex for precise tech marker detection
-                                if re.search(r'\b' + re.escape(tech) + r'\b', combined_text):
-                                    found.append({"name": tech.upper(), "category": cat, "source": "job_descriptions"})
-                                    seen.add(tech)
+                from app.services.snowflake import db
+                # Get company record to find its ID
+                comp_rec = await db.fetch_company_by_ticker(ticker) if ticker else None
+                if comp_rec:
+                    job_descs = await db.fetch_job_descriptions_for_talent(comp_rec['id'])
+                    combined_text = " ".join(job_descs).lower()
             except Exception as e:
-                logger.debug(f"Job tech analysis failed: {e}")
+                logger.error(f"Error fetching jobs from Snowflake for tech markers: {e}")
+
+        if not combined_text:
+            return []
+
+        seen = set()
+        for cat, techs in self.TECH_INDICATORS.items():
+            for tech in techs:
+                # Match with word boundaries to avoid false positives (e.g. "spark" in "sparkle")
+                if re.search(rf"\b{re.escape(tech.lower())}\b", combined_text):
+                    found.append({"name": tech.upper(), "category": cat, "source": "job_descriptions"})
+                    seen.add(tech)
         return found
 
-    async def collect(self, company_name: str, ticker: str = None) -> CollectorResult:
+    async def collect(self, company_name: str, ticker: str = None, job_evidence: List[Dict[str, Any]] = None) -> CollectorResult:
         """Orchestrates technical footprint discovery and evaluation."""
         try:
             domain = await self._resolve_domain(company_name, ticker)
             logger.info(f"Analyzing technical stack for {company_name} via {domain}")
             
             web_task = self._scan_footprint(domain)
-            # We run job analysis synchronously
-            job_data = self._analyze_job_mentions(company_name, ticker)
+            # Use job_evidence if provided
+            job_data = await self._analyze_job_mentions(company_name, ticker, job_evidence=job_evidence)
             logger.info(f"Job description analysis found {len(job_data)} markers")
             
             web_data = await web_task
