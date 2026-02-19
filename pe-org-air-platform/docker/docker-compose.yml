@@ -5,29 +5,18 @@ x-airflow-common:
   build:
     context: ..
     dockerfile: docker/Dockerfile
+  env_file:
+    - ../.env
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://airflow:airflow@postgres/airflow
     AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
     AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKEND: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
-    # App Env Vars for Components
-    SNOWFLAKE_ACCOUNT: ${SNOWFLAKE_ACCOUNT}
-    SNOWFLAKE_USER: ${SNOWFLAKE_USER}
-    SNOWFLAKE_PASSWORD: ${SNOWFLAKE_PASSWORD}
-    SNOWFLAKE_DATABASE: ${SNOWFLAKE_DATABASE}
-    SNOWFLAKE_SCHEMA: ${SNOWFLAKE_SCHEMA}
-    SNOWFLAKE_WAREHOUSE: ${SNOWFLAKE_WAREHOUSE}
-    AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-    AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
-    S3_BUCKET: ${S3_BUCKET}
-    AWS_FOLDER: ${AWS_FOLDER}
-    AWS_REGION: ${AWS_REGION}
-    PATENTSVIEW_API_KEY: ${PATENTSVIEW_API_KEY}
     REDIS_HOST: redis
     REDIS_PORT: 6379
     # Add PYTHONPATH to include app modules
@@ -167,6 +156,8 @@ services:
   # ----------------------------------------------------------------
   api:
     <<: *airflow-common
+    # Override entrypoint to bypass Airflow's wrapper
+    entrypoint: []
     # Override command to run FastAPI
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     ports:
