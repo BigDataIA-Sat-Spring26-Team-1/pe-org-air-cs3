@@ -97,7 +97,7 @@ class GlassdoorOrchestrator:
         except Exception as e:
             logger.error(f"Failed to initialize tables: {e}")
 
-    async def run_pipeline(self, ticker: str, glassdoor_id: str = None, limit: int = 20, force_refresh: bool = False):
+    async def run_pipeline(self, ticker: str, glassdoor_id: str = None, limit: int = 20, force_refresh: bool = False) -> Dict[str, int]:
         # 0. Ensure tables exist
         await self.initialize_tables()
 
@@ -110,28 +110,26 @@ class GlassdoorOrchestrator:
         
         if not glassdoor_id:
             logger.error(f"Cannot run pipeline for {ticker}: No Glassdoor ID found.")
-            return
+            return {"reviews": 0, "signals": 0}
 
         # 1. Fetch & Parse (internal caching handled)
-        # Note: We pass limit. force_refresh isn't explicitly handled in the new signature yet unless we add it, 
-        # but for now we rely on the internal logic.
-        
         parsed_reviews = await self.collector.fetch_reviews(ticker, limit=limit)
         
         if not parsed_reviews:
             logger.info(f"No reviews found for {ticker}")
-            return
+            return {"reviews": 0, "signals": 0}
             
         # 2. Snowflake
         await self.save_reviews_to_snowflake(parsed_reviews)
         
         # 3. Analyze
-        # Pass company_id and ticker explicitly
         signal = self.collector.analyze_reviews(glassdoor_id, ticker, parsed_reviews)
         logger.info(f"Culture Signal for {ticker}: {signal}")
         
         # 4. Persist Culture Signal
         await self.save_culture_signal(signal)
+        
+        return {"reviews": len(parsed_reviews), "signals": 1 if signal else 0}
 
     async def run_batch(self, companies: List[Dict[str, str]], limit: int = 20, force_refresh: bool = False):
         """

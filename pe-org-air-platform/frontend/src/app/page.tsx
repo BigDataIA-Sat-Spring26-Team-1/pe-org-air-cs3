@@ -21,6 +21,7 @@ interface Stats {
   companies: number;
   documents: number;
   signals: number;
+  culture_data: number;
   errors: number;
   status: string;
   last_run: string | null;
@@ -174,10 +175,10 @@ export default function Dashboard() {
           color="blue"
         />
         <StatCard
-          label="Signals Parsed"
-          value={stats?.signals.toLocaleString() || "0"}
+          label="Signals & Culture"
+          value={((stats?.signals || 0) + (stats?.culture_data || 0)).toLocaleString()}
           icon={<TrendingUp className="text-purple-500" size={20} />}
-          trend="Live Pipeline"
+          trend={`${stats?.culture_data || 0} Culture Vectors`}
           color="purple"
         />
         <StatCard
