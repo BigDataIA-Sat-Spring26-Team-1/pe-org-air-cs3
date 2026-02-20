@@ -43,7 +43,7 @@ export default function RootLayout({
           <div className="mt-auto p-6 border-t border-slate-800">
             <nav className="space-y-1">
               <Link
-                href="/docs"
+                href="/platform-docs"
                 className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-slate-400 hover:text-slate-100 hover:bg-white/5"
               >
                 <BookOpen size={20} />

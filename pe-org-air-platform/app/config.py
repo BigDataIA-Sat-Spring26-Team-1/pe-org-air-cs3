@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     # External API Keys
     PATENTSVIEW_API_KEY: SecretStr = None
     WEXTRACTOR_API_KEY: SecretStr = None
+    SEC_API_KEY: Optional[SecretStr] = None
     
     # Snowflake
     SNOWFLAKE_ACCOUNT: str
