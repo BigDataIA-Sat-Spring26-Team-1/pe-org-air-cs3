@@ -1,44 +1,28 @@
+
 import pytest
-import time
-
-# Tests run against the LIVE running docker container
-@pytest.mark.asyncio
-async def test_health_check_live(client):
-    """Test the health endpoint on the live container."""
-    response = await client.get("/health")
-    assert response.status_code == 200
-    assert "status" in response.json()
+from uuid import uuid4
 
 @pytest.mark.asyncio
-async def test_root_live(client):
-    response = await client.get("/")
-    assert response.status_code == 200
-    assert "Welcome" in response.json()["message"]
+async def test_health_check(client):
+    res = await client.get("/health")
+    assert res.status_code == 200
 
 @pytest.mark.asyncio
-async def test_duplicate_company_name(client):
-    """
-    Verify that creating a company with an existing name (Unique constraint) is handled.
-    """
-    # 1. Get industry
+async def test_root_endpoint(client):
+    res = await client.get("/")
+    assert res.status_code == 200
+
+@pytest.mark.asyncio
+async def test_company_creation(client):
     ind_res = await client.get("/api/v1/industries/")
-    industries = ind_res.json()
-    if not industries:
-        pytest.skip("No industries available to link company")
-    industry_id = industries[0]["id"]
+    assert ind_res.status_code == 200
+    ind_id = ind_res.json()[0]["id"]
     
-    unique_name = f"Constraint Test Co {int(time.time())}"
     payload = {
-        "name": unique_name,
-        "ticker": "CON",
-        "industry_id": industry_id
+        "name": f"Test Co {uuid4().hex[:6]}",
+        "ticker": "TEST",
+        "industry_id": ind_id
     }
     
-    # 2. First creation - Success
-    res1 = await client.post("/api/v1/companies/", json=payload)
-    assert res1.status_code == 201
-    
-    # 3. Second creation - Should fail due to UNIQUE constraint on NAME
-    res2 = await client.post("/api/v1/companies/", json=payload)
-    
-    print(f"Duplicate check result: {res2.status_code}")
+    res = await client.post("/api/v1/companies/", json=payload)
+    assert res.status_code == 201

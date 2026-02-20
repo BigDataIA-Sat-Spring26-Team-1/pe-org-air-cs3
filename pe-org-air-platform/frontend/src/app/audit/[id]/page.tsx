@@ -116,7 +116,7 @@ export default function AuditPage({ params }: { params: Promise<{ id: string }> 
     const [filingsPage, setFilingsPage] = useState(1);
     const PAGE_SIZE = 10;
 
-    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
     useEffect(() => {
         async function fetchData() {

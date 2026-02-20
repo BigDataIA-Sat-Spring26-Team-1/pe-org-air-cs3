@@ -5,6 +5,11 @@ COPY package*.json ./
 RUN npm install
 RUN npm install remark-gfm
 COPY . .
+
+# Receive the URL arg from Docker Compose
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
 RUN npm run build
 
 # Production stage
