@@ -19,6 +19,7 @@ from app.scoring.calculators import OrgAIRCalculator
 from app.models.signals import SignalCategory
 from app.models.scoring import SignalSource
 from app.services.sector_config import sector_config
+from app.scoring.position_factor import PositionFactorCalculator
 
 
 logger = structlog.get_logger(__name__)
@@ -35,6 +36,7 @@ class IntegrationPipeline:
         self.talent_calculator = TalentConcentrationCalculator()
         self.culture_collector = GlassdoorCultureCollector()
         self.org_air_calc = OrgAIRCalculator()
+        self.pf_calculator = PositionFactorCalculator()
 
     async def get_active_tickers(self) -> List[str]:
         """Fetch all tickers that should be processed."""
@@ -90,7 +92,8 @@ class IntegrationPipeline:
             "base_scores": {k: float(v) for k, v in base_scores.items()},
             "sector": sector,
             "hr_base": hr_base,
-            "position_factor": float(company.get('position_factor', 0.5))
+            "position_factor": float(company.get('position_factor', 0.5)),
+            "market_cap_percentile": float(company.get('market_cap_percentile', 0.5))
         }
 
     async def analyze_sec_rubric(self, context: Dict[str, Any]) -> Dict[str, float]:
@@ -257,9 +260,19 @@ class IntegrationPipeline:
         hr_modifier = Decimal(str(talent_results.get("hr_modifier", 1.0)))
         base_hr_val = str(context.get("hr_base", 70.0))
         hr_base_adjusted = Decimal(base_hr_val) * hr_modifier
-        
-        position_factor = Decimal(str(context.get('position_factor', 0.5)))
+
+        # Calculate V^R score first to use in Position Factor
         sector = context.get('sector', 'default')
+        vr_score = self.org_air_calc.vr_calc.calculate_vr(dimension_inputs, sector)
+
+        # Calculate Dynamic Position Factor using Improved logic
+        mcap_p = float(context.get('market_cap_percentile', 0.5))
+        pf_decimal = self.pf_calculator.calculate_position_factor(
+            float(vr_score),
+            sector,
+            mcap_p
+        )
+        position_factor = pf_decimal
 
         dimension_confidences = [Decimal("0.8")] * len(dimension_inputs)
 

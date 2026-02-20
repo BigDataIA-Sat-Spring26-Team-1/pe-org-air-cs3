@@ -33,28 +33,22 @@ class PositionFactorCalculator:
     ) -> Decimal:
         """
         Calculate position factor from V^R and market cap.
-
-        Args:
-            vr_score: Company's V^R score (0-100)
-            sector: Company sector
-            market_cap_percentile: Position in sector by market cap (0-1)
-
-        Returns:
-            Position factor in [-1, 1]
+        PF = 0.6 * VR_component + 0.4 * MCap_component
         """
-        # Get sector average V^R
+        # Get sector average V^R (Fall back to 50.0 if unknown)
         sector_avg = self.SECTOR_AVG_VR.get(sector.lower(), 50.0)
 
         # Calculate VR component
         vr_diff = vr_score - sector_avg
-        vr_component = max(-1, min(1, vr_diff / 50))
+        vr_component = max(-1.0, min(1.0, vr_diff / 50.0))
 
         # Calculate market cap component
-        mcap_component = (market_cap_percentile - 0.5) * 2
+        # (percentile - 0.5) * 2 maps [0, 1] to [-1, 1]
+        mcap_component = (market_cap_percentile - 0.5) * 2.0
 
         # Weighted combination
-        pf = 0.6 * vr_component + 0.4 * mcap_component
+        pf = (0.6 * vr_component) + (0.4 * mcap_component)
 
         # Bound to [-1, 1] and return as Decimal
-        pf_bounded = max(-1, min(1, pf))
+        pf_bounded = max(-1.0, min(1.0, pf))
         return Decimal(str(round(pf_bounded, 2)))

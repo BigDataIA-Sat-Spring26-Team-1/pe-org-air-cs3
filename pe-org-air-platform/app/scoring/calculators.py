@@ -23,8 +23,14 @@ class VRCalculator:
         values = []
         w_list = []
         
+        DIMENSION_FLOOR = Decimal("30.0")
+        
         for dim, weight in weights.items():
+            # Get score, default to 50 if missing entirely from dict,
+            # but apply a floor if it was explicitly scored as 0 (no signals)
             score = dimension_scores.get(dim, Decimal("50.0"))
+            score = max(score, DIMENSION_FLOOR)
+            
             values.append(score)
             w_list.append(weight)
         
