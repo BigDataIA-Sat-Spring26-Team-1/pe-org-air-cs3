@@ -88,17 +88,12 @@ class SnowflakeService:
         with conn.cursor(DictCursor) as cursor:
             cursor.execute(query, params)
             rows = cursor.fetchall()
-            # Provide both lowercased keys for backend logic and original keys for frontend display
+            # Normalize to lowercase keys to avoid duplication in JSON responses
             results = []
             for row in rows:
                 row_dict = dict(row)
-                # Clean values (convert None/NaN to safe defaults)
-                cleaned_row = {k: self._clean_data(v) for k, v in row_dict.items()}
-                
-                normalized = {k.lower(): v for k, v in cleaned_row.items()}
-                # Merge cleaned original keys over normalized to preserve special casing (like "10-K")
-                normalized.update(cleaned_row)
-                results.append(normalized)
+                # Clean values and use lowercase keys
+                results.append({k.lower(): self._clean_data(v) for k, v in row_dict.items()})
             return results
     
     def execute_query(self, query: str, params: tuple = None) -> List[Dict[str, Any]]:

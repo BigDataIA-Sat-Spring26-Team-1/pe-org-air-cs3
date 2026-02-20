@@ -29,10 +29,10 @@ interface LeaderboardItem {
 interface DocItem {
     ticker: string;
     company: string;
-    "10-K": number;
-    "10-Q": number;
-    "8-K": number;
-    "DEF 14A": number;
+    "10-k": number;
+    "10-q": number;
+    "8-k": number;
+    "def 14a": number;
     total_docs: number;
 }
 
@@ -320,19 +320,19 @@ export default function ReadinessPage() {
                                 {report?.documents.map((item) => (
                                     <tr key={item.ticker} className="hover:bg-white/[0.01] transition-colors">
                                         <td className="px-6 py-4"><span className="text-xs font-black text-blue-400">{item.ticker}</span></td>
-                                        <td className="px-6 py-4 text-center text-xs font-medium text-slate-400">{item["10-K"]}</td>
-                                        <td className="px-6 py-4 text-center text-xs font-medium text-slate-400">{item["10-Q"]}</td>
-                                        <td className="px-6 py-4 text-center text-xs font-medium text-slate-400">{item["8-K"]}</td>
-                                        <td className="px-6 py-4 text-center text-xs font-medium text-slate-400">{item["DEF 14A"]}</td>
+                                        <td className="px-6 py-4 text-center text-xs font-medium text-slate-400">{item["10-k"]}</td>
+                                        <td className="px-6 py-4 text-center text-xs font-medium text-slate-400">{item["10-q"]}</td>
+                                        <td className="px-6 py-4 text-center text-xs font-medium text-slate-400">{item["8-k"]}</td>
+                                        <td className="px-6 py-4 text-center text-xs font-medium text-slate-400">{item["def 14a"]}</td>
                                         <td className="px-6 py-4 text-right"><span className="text-xs font-black text-white">{item.total_docs}</span></td>
                                     </tr>
                                 ))}
                                 <tr className="bg-white/[0.03] font-black">
                                     <td className="px-6 py-4 uppercase tracking-widest text-[9px]">Total</td>
-                                    <td className="px-6 py-4 text-center text-xs">{report?.documents.reduce((a, c) => a + c["10-K"], 0)}</td>
-                                    <td className="px-6 py-4 text-center text-xs">{report?.documents.reduce((a, c) => a + c["10-Q"], 0)}</td>
-                                    <td className="px-6 py-4 text-center text-xs">{report?.documents.reduce((a, c) => a + c["8-K"], 0)}</td>
-                                    <td className="px-6 py-4 text-center text-xs">{report?.documents.reduce((a, c) => a + c["DEF 14A"], 0)}</td>
+                                    <td className="px-6 py-4 text-center text-xs">{report?.documents.reduce((a, c) => a + c["10-k"], 0)}</td>
+                                    <td className="px-6 py-4 text-center text-xs">{report?.documents.reduce((a, c) => a + c["10-q"], 0)}</td>
+                                    <td className="px-6 py-4 text-center text-xs">{report?.documents.reduce((a, c) => a + c["8-k"], 0)}</td>
+                                    <td className="px-6 py-4 text-center text-xs">{report?.documents.reduce((a, c) => a + c["def 14a"], 0)}</td>
                                     <td className="px-6 py-4 text-right text-xs text-blue-500">{report?.documents.reduce((a, c) => a + c.total_docs, 0)}</td>
                                 </tr>
                             </tbody>
