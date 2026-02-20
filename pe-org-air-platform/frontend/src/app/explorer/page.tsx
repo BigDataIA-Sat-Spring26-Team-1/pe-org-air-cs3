@@ -42,7 +42,8 @@ export default function Explorer() {
         e.preventDefault();
         setLoading(true);
         try {
-            const url = new URL(`${API_BASE}/api/v1/documents`);
+            const baseUrl = API_BASE || window.location.origin;
+            const url = new URL(`${baseUrl}/api/v1/documents`);
             if (ticker) url.searchParams.append("company", ticker);
             if (filingType) url.searchParams.append("filing_type", filingType);
             url.searchParams.append("limit", "50");
