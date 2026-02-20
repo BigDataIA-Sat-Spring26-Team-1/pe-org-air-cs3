@@ -214,19 +214,19 @@ DIMENSION_RUBRICS: Dict[str, Dict[ScoreLevel, RubricCriteria]] = {
     "use_case_portfolio": {
         ScoreLevel.LEVEL_5: RubricCriteria(
             level=ScoreLevel.LEVEL_5,
-            keywords=["production ai", "3x roi", "ai product"],
+            keywords=["production ai", "3x roi", "ai product", "h100", "cuda", "nvidia dgx", "accelerated computing"],
             min_keyword_matches=2,
             quantitative_threshold=0.30
         ),
         ScoreLevel.LEVEL_4: RubricCriteria(
             level=ScoreLevel.LEVEL_4,
-            keywords=["production", "measured roi", "scaling"],
+            keywords=["production", "measured roi", "scaling", "gpu cluster", "ai factory"],
             min_keyword_matches=2,
             quantitative_threshold=0.20
         ),
         ScoreLevel.LEVEL_3: RubricCriteria(
             level=ScoreLevel.LEVEL_3,
-            keywords=["pilot", "early production"],
+            keywords=["pilot", "early production", "inference"],
             min_keyword_matches=1,
             quantitative_threshold=0.10
         ),

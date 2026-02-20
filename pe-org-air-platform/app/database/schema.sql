@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS companies (
     cik VARCHAR(20),
     name_norm VARCHAR(255),
     is_deleted BOOLEAN DEFAULT FALSE,
+    market_cap_percentile FLOAT DEFAULT 0.5,
     created_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
     updated_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
 );
