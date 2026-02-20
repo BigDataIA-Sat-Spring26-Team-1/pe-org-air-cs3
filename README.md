@@ -8,6 +8,7 @@
 ![Airflow](https://img.shields.io/badge/Airflow-Orchestration-017CEE?style=for-the-badge&logo=apacheairflow)
 ![Playwright](https://img.shields.io/badge/Playwright-Automation-2EAD33?style=for-the-badge&logo=playwright)
 ![Docker](https://img.shields.io/badge/Docker-Orchestration-2496ED?style=for-the-badge&logo=docker)
+![Nginx](https://img.shields.io/badge/Nginx-Reverse_Proxy-009639?style=for-the-badge&logo=nginx)
 
 The **PE Org-AI-R Platform** is a sophisticated data orchestration and analytics platform engineered to help Private Equity firms assess the technological maturity and AI readiness of target portfolio companies. The system automates the capture of high-fidelity signals from SEC filings, global patent registries, technology job markets, and **Glassdoor employee reviews** to compute a multi-dimensional AI-readiness score.
 
@@ -22,6 +23,7 @@ The **PE Org-AI-R Platform** is a sophisticated data orchestration and analytics
 | **Data & Cache** | ![Snowflake](https://img.shields.io/badge/Snowflake-29B5E8?style=flat&logo=snowflake&logoColor=white) **Snowflake (SQL Alchemy + Snowflake-connector)**, ![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat&logo=redis&logoColor=white) **Redis (aioredis)** |
 | **Orchestration** | ![Airflow](https://img.shields.io/badge/Airflow-017CEE?style=flat&logo=apacheairflow&logoColor=white) **Apache Airflow 2.x** (TaskFlow API, Dynamic Task Mapping) |
 | **Pipelines** | ![Playwright](https://img.shields.io/badge/Playwright-2EAD33?style=flat&logo=playwright&logoColor=white) **Playwright (Stealth Mode)**, **JobSpy (LinkedIn Scraper)**, **Wextractor (Glassdoor API)**, **Boto3 (AWS S3)** |
+| **Reverse Proxy** | ![Nginx](https://img.shields.io/badge/Nginx-009639?style=flat&logo=nginx&logoColor=white) **Nginx** (unified gateway for API + Frontend + Docs) |
 | **Testing** | ![Pytest](https://img.shields.io/badge/Pytest-0A9EDC?style=flat&logo=pytest&logoColor=white) **Pytest**, **Asyncio In-Memory Testing** |
 
 ---
@@ -41,51 +43,53 @@ The **PE Org-AI-R Platform** is a sophisticated data orchestration and analytics
   |docker
   |--|Dockerfile
   |--|docker-compose.yml
-  |--|dags/                          # Airflow DAG mount point
-  |--|logs/                          # Airflow log volume
-  |--|plugins/                       # Airflow plugins mount
+  |--|nginx.conf                      # Nginx reverse proxy config
+  |--|dags/                           # Airflow DAG mount point
+  |--|logs/                           # Airflow log volume
+  |--|plugins/                        # Airflow plugins mount
   |dags
-  |--|integration_pipeline_dag.py    # Full scoring pipeline (daily)
-  |--|sec_ingestion_dag.py           # SEC filing ingestion (daily)
-  |--|sec_backfill_dag.py            # SEC backfill (manual trigger)
-  |--|sec_monitor_dag.py             # SEC data quality audit (weekly)
+  |--|integration_pipeline_dag.py     # Full scoring pipeline (daily)
+  |--|sec_ingestion_dag.py            # SEC filing ingestion (daily)
+  |--|sec_backfill_dag.py             # SEC backfill (manual trigger)
+  |--|sec_monitor_dag.py              # SEC data quality audit (weekly)
   |app
   |--|routers
-  |--|--|metrics.py
-  |--|--|signals.py
+  |--|--|metrics.py                   # Dashboard & readiness report metrics
+  |--|--|signals.py                   # External signals & Glassdoor endpoints
   |--|--|routers_utils.py
   |--|--|config.py
-  |--|--|health.py
+  |--|--|health.py                    # Dependency health checks
   |--|--|__init__.py
-  |--|--|sec.py
-  |--|--|companies.py
-  |--|--|testing.py
-  |--|--|assessments.py
-  |--|--|evidence.py
+  |--|--|sec.py                       # SEC document & Airflow trigger endpoints
+  |--|--|companies.py                 # Company CRUD & evidence lookup
+  |--|--|testing.py                   # In-API pytest runner
+  |--|--|assessments.py               # Assessment lifecycle & dimension scores
+  |--|--|evidence.py                  # Batch collection & backfill
   |--|--|industries.py
-  |--|--|integration.py               # Integration pipeline trigger
+  |--|--|integration.py               # Integration pipeline trigger (direct + Airflow)
   |--|database
   |--|--|seed.sql
   |--|--|schema.sql
   |--|--|schema_sec.sql
   |--|--|schema_signal.sql
-  |--|--|schema_culture.sql           # Glassdoor culture scores
+  |--|--|schema_culture.sql            # Glassdoor culture scores
   |--|--|__init__.py
   |--|config.py
   |--|__init__.py
   |--|pipelines
-  |--|--|integration_pipeline.py      # Master integration orchestrator
-  |--|--|board_analyzer.py            # Board composition analyzer
+  |--|--|integration_pipeline.py       # Master integration orchestrator
+  |--|--|board_analyzer.py             # Board composition analyzer
   |--|--|sec
   |--|--|--|pipeline.py
   |--|--|--|downloader.py
   |--|--|--|parser.py
   |--|--|--|chunker.py
-  |--|--|--|components.py             # Airflow-compatible task components
+  |--|--|--|components.py              # Airflow-compatible task components
   |--|--|glassdoor
-  |--|--|--|glassdoor_collector.py     # Review fetcher & rubric scorer
-  |--|--|--|glassdoor_orchestrator.py  # Batch orchestration & persistence
-  |--|--|--|glassdoor_queries.py       # Snowflake query templates
+  |--|--|--|__init__.py
+  |--|--|--|glassdoor_collector.py      # Review fetcher & rubric scorer
+  |--|--|--|glassdoor_orchestrator.py   # Batch orchestration & persistence
+  |--|--|--|glassdoor_queries.py        # Snowflake query templates
   |--|--|external_signals
   |--|--|--|orchestrator.py
   |--|--|--|job_collector.py
@@ -105,24 +109,25 @@ The **PE Org-AI-R Platform** is a sophisticated data orchestration and analytics
   |--|--|sec.py
   |--|--|industry.py
   |--|--|dimension.py
-  |--|--|scoring.py                   # Scoring result models
-  |--|--|glassdoor_models.py          # Glassdoor review models
-  |--|--|board.py                     # Board composition models
-  |--|scoring                         # AI Readiness Scoring Engine
-  |--|--|rubric_scorer.py             # Rubric-based scoring logic
-  |--|--|calculators.py               # VR, HR, Synergy, Confidence, OrgAIR
-  |--|--|evidence_mapper.py           # Signal → Dimension evidence mapping
-  |--|--|talent_analyzer.py           # Talent concentration analysis
-  |--|--|position_factor.py           # Position-factor calculator
+  |--|--|scoring.py                    # Scoring result models
+  |--|--|glassdoor_models.py           # Glassdoor review models
+  |--|--|board.py                      # Board composition models
+  |--|scoring                          # AI Readiness Scoring Engine
+  |--|--|__init__.py
+  |--|--|rubric_scorer.py              # Rubric-based scoring logic
+  |--|--|calculators.py                # VR, HR, Synergy, Confidence, OrgAIR
+  |--|--|evidence_mapper.py            # Signal → Dimension evidence mapping
+  |--|--|talent_analyzer.py            # Talent concentration analysis
+  |--|--|position_factor.py            # Position-factor calculator
   |--|--|utils.py
   |--|main.py
   |--|services
   |--|--|__init__.py
-  |--|--|backfill.py
+  |--|--|backfill.py                   # Evidence backfill service
   |--|--|snowflake.py
   |--|--|s3_storage.py
   |--|--|redis_cache.py
-  |--|--|sector_config.py             # Sector/industry configuration
+  |--|--|sector_config.py              # Sector/industry configuration
   |pytest.ini
   |frontend
   |--|postcss.config.mjs
@@ -137,14 +142,24 @@ The **PE Org-AI-R Platform** is a sophisticated data orchestration and analytics
   |requirements.txt
   |pyproject.toml
   |tests
-  |--|test_concurrency.py
   |--|conftest.py
-  |--|test_performance_cache.py
-  |--|test_flows.py
-  |--|test_sec_downloader.py
-  |--|test_models.py
-  |--|test_api.py
-  |--|test_scoring_properties.py      # Scoring engine property tests
+  |--|test_api.py                      # REST endpoint validation
+  |--|test_flows.py                    # Assessment → Signal → Score lifecycle
+  |--|test_models.py                   # Pydantic V2 model validation
+  |--|test_concurrency.py              # Parallel scraping stress tests
+  |--|test_performance_cache.py        # Redis hit rates & latency
+  |--|test_sec_downloader.py           # SEC/PatentsView mock tests
+  |--|test_scoring_properties.py       # Scoring engine property tests
+  |--|test_assessments_router.py       # Assessment router tests
+  |--|test_backfill_mock.py            # Backfill service mock tests
+  |--|test_cs3_calculators.py          # CS3 scoring calculator tests
+  |--|test_integration_pipeline.py     # Integration pipeline tests
+  |--|test_redis_mock.py               # Redis mock tests
+  |--|test_router_coverage.py          # Full router coverage tests
+  |--|test_rubrics.py                  # Rubric scoring tests
+  |--|test_s3_mock.py                  # S3 storage mock tests
+  |--|test_snowflake_mock.py           # Snowflake mock tests
+  |--|test_coverage_expansion.py       # General coverage expansion
   |README.md
   |logs
   |--|app.log
@@ -174,6 +189,12 @@ SNOWFLAKE_USER="your-user"
 SNOWFLAKE_PASSWORD="your-password"
 SNOWFLAKE_DATABASE="PE_ORGAIR"
 SNOWFLAKE_SCHEMA="PUBLIC"
+SNOWFLAKE_WAREHOUSE="your-warehouse"
+SNOWFLAKE_ROLE="ACCOUNTADMIN"
+
+# === Application ===
+SECRET_KEY="your-secret-key"
+AIRFLOW_UID=501
 
 # === Infrastructure ===
 REDIS_HOST="redis"
@@ -182,6 +203,7 @@ NEXT_PUBLIC_API_URL="http://localhost:8000"
 # === External Integration (Optional) ===
 AWS_ACCESS_KEY_ID="your-key"
 AWS_SECRET_ACCESS_KEY="your-secret"
+AWS_REGION="us-east-1"
 S3_BUCKET="pe-intelligence-parsed"
 PATENTSVIEW_API_KEY="your-patentsview-key"
 WEXTRACTOR_API_KEY="your-wextractor-key"
@@ -191,12 +213,36 @@ WEXTRACTOR_API_KEY="your-wextractor-key"
 ```bash
 docker compose --env-file .env -f docker/docker-compose.yml up --build
 ```
-*   **Frontend Hub**: `http://localhost:3000`
-*   **API Backbone**: `http://localhost:8000`
-*   **Airflow UI**: `http://localhost:8080`
-*   **Interactive Tutorial**: `http://localhost:3000/tutorial`
 
-### 4. Stopping and Cleanup
+All services are accessible through **Nginx reverse proxy** on a single port:
+
+*   **Platform (Unified Entry)**: `http://localhost` — Nginx routes to the appropriate service
+*   **Interactive API Docs (Swagger)**: `http://localhost/docs`
+*   **Airflow UI**: `http://localhost:8080`
+
+> **Nginx Routing Rules:**
+> | Path | Routed To |
+> | :--- | :--- |
+> | `/api/*` | FastAPI backend (`:8000`) |
+> | `/docs`, `/openapi.json` | Swagger/OpenAPI UI (`:8000`) |
+> | `/*` (everything else) | Next.js frontend (`:3000`) |
+
+### 4. Docker Services Architecture
+
+The platform runs as a **multi-container stack** orchestrated by Docker Compose:
+
+| Service | Image / Build | Exposed Port | Purpose |
+| :--- | :--- | :--- | :--- |
+| **nginx** | `nginx:latest` | `:80` | Reverse proxy — single entry point for all traffic |
+| **api** | Custom (Airflow base) | Internal `:8000` | FastAPI backend with all REST endpoints |
+| **frontend** | Custom (Next.js) | Internal `:3000` | Next.js 15 frontend application |
+| **airflow-webserver** | Custom (Airflow base) | `:8080` | Airflow UI for DAG management |
+| **airflow-scheduler** | Custom (Airflow base) | — | DAG scheduling & task execution |
+| **airflow-triggerer** | Custom (Airflow base) | — | Deferred task triggering |
+| **postgres** | `postgres:13` | — | Airflow metadata database |
+| **redis** | `redis:latest` | — | Caching layer & Airflow broker |
+
+### 5. Stopping and Cleanup
 
 **Stop containers and remove images (Recommended):**
 ```bash
@@ -229,18 +275,51 @@ du -sh data/ logs/
 
 ---
 
+## 📡 API Reference
+
+The platform exposes a comprehensive REST API via **FastAPI** with 11 routers. Full interactive documentation is available at **`http://localhost/docs`** (Swagger UI) and **`http://localhost/openapi.json`** (OpenAPI spec).
+
+### Endpoint Overview
+
+| Router | Prefix | Endpoints | Description |
+| :--- | :--- | :--- | :--- |
+| **Health** | `/health` | `GET /health` | Dependency health check (Snowflake, Redis, S3 status) |
+| **Companies** | `/api/v1/companies` | `POST /` `GET /` `GET /{id}` `PUT /{id}` `DELETE /{id}` `GET /{id}/signals/{category}` `GET /{id}/evidence` | Full CRUD, per-company signals by category, and evidence lookup |
+| **Assessments** | `/api/v1` | `POST /assessments` `GET /assessments` `GET /assessments/{id}` `PATCH /assessments/{id}/status` `POST /assessments/{id}/scores` `GET /assessments/{id}/scores` `PUT /scores/{id}` | Assessment lifecycle management with dimension scoring |
+| **SEC Documents** | `/api/v1/documents` | `POST /collect` `POST /collect-airflow` `GET /` `GET /{id}` `GET /{id}/chunks` | SEC filing collection (direct + Airflow trigger), document & chunk retrieval |
+| **Signals** | `/api/v1/signals` | `POST /collect/glassdoor` `GET /culture/{ticker}` `GET /culture/reviews/{ticker}` `POST /collect` `GET /` `GET /evidence` `GET /summary` `GET /details/{category}` | External intelligence collection, Glassdoor reviews & culture scores, signal browsing |
+| **Evidence** | `/api/v1/evidence` | `POST /collect` `POST /backfill` `GET /stats` | Batch evidence collection, full portfolio backfill, progress stats |
+| **Integration** | `/api/v1/integration` | `POST /run` `POST /run-airflow` | Deep scoring pipeline (direct execution or Airflow DAG trigger) |
+| **Metrics** | `/api/v1/metrics` | `GET /industry-distribution` `GET /company-stats` `GET /signal-distribution` `GET /summary` `GET /readiness-report` | Dashboard analytics & AI readiness leaderboard |
+| **Industries** | `/api/v1/industries` | `GET /` | List supported industries with risk factors |
+| **Config** | `/api/v1/config` | `GET /vars` `GET /dimension-weights` | Non-sensitive platform configuration & scoring dimension weights |
+| **System Testing** | `/api/v1/system` | `POST /run-tests` | Trigger the full pytest suite from the API and return results |
+
+### Airflow DAG Trigger Endpoints
+
+The API provides **programmatic access** to trigger Airflow DAGs without using the Airflow UI:
+
+| Endpoint | DAG Triggered | Description |
+| :--- | :--- | :--- |
+| `POST /api/v1/documents/collect-airflow` | `sec_filing_ingestion` | Triggers SEC filing download, parsing, and Snowflake persistence |
+| `POST /api/v1/integration/run-airflow` | `integration_pipeline` | Triggers the full OrgAIR scoring pipeline per ticker via Airflow |
+
+Both endpoints communicate with the Airflow REST API internally and return the `dag_run_id` for tracking.
+
+---
+
 ## 🔄 Airflow Pipeline Orchestration
 
 The platform uses **Apache Airflow 2.x** with the **TaskFlow API** and **Dynamic Task Mapping** to orchestrate all data collection and scoring pipelines. Airflow runs as part of the Docker Compose stack alongside the API and frontend.
 
 ### DAG Overview
 
-| DAG ID | Schedule | Description |
-| :--- | :--- | :--- |
-| `integration_pipeline` | `@daily` | **Core scoring pipeline** — fetches active tickers, then for each company runs parallel analysis tasks (SEC rubric, Board composition, Talent signals, Culture/Glassdoor) and computes the final OrgAIR score. |
-| `sec_filing_ingestion` | `@daily` | **SEC ingestion** — downloads latest 10-K/10-Q filings per ticker from EDGAR, parses and chunks documents, stores in S3 + Snowflake. |
-| `sec_backfill` | Manual | **SEC backfill** — manually triggered to backfill historical filings for specified tickers with configurable filing types and limits. |
-| `sec_quality_monitor` | `@weekly` | **Data quality audit** — validates Snowflake document/chunk counts, checks S3 consistency, and flags zero-chunk documents (parsing failures). |
+| DAG ID | Schedule | API Trigger | Description |
+| :--- | :--- | :--- | :--- |
+| `integration_pipeline` | `@daily` | `POST /api/v1/integration/run-airflow` | **Core scoring pipeline** — fetches active tickers, then for each company runs parallel analysis tasks (SEC rubric, Board composition, Talent signals, Culture/Glassdoor) and computes the final OrgAIR score. |
+| `sec_filing_ingestion` | `@daily` | `POST /api/v1/documents/collect-airflow` | **SEC ingestion** — downloads latest 10-K/10-Q filings per ticker from EDGAR, parses and chunks documents, stores in S3 + Snowflake. |
+| `sec_backfill` | Manual | — | **SEC backfill** — manually triggered to backfill historical filings for specified tickers with configurable filing types and limits. |
+| `sec_quality_monitor` | `@weekly` | — | **Data quality audit** — validates Snowflake document/chunk counts, checks S3 consistency, and flags zero-chunk documents (parsing failures). |
 
 ### Integration Pipeline Workflow
 ```
@@ -340,7 +419,7 @@ Each pipeline step is wrapped as an Airflow `@task` with `asyncio.run()` bridgin
 
 ## 🧪 Quality & Verification
 
-The platform maintains a robust test suite covering core logic, API integrity, and performance benchmarks.
+The platform maintains a comprehensive test suite with **17 test modules** covering core logic, API integrity, service mocks, and performance benchmarks.
 
 ### Running Tests
 Execute the full suite within the containerized environment:
@@ -349,16 +428,31 @@ Execute the full suite within the containerized environment:
 docker compose --env-file .env -f docker/docker-compose.yml exec api pytest -v -s
 ```
 
+Alternatively, trigger tests directly from the API:
+```bash
+curl -X POST http://localhost/api/v1/system/run-tests
+```
+
 ### Test Categories
 | Module | Focus Area |
 | :--- | :--- |
-| **API Integrity** (`test_api.py`) | Validates all REST endpoints, status codes, and payload validation. |
+| **API Integrity** (`test_api.py`) | Validates REST endpoints, status codes, and payload validation. |
 | **Business Logic** (`test_flows.py`) | End-to-end verification of the Assessment → Signal → Score lifecycle. |
-| **Concurrency** (`test_concurrency.py`) | Stress tests the system's ability to handle parallel scraping tasks and SEM throttling. |
+| **Concurrency** (`test_concurrency.py`) | Stress tests parallel scraping tasks and semaphore throttling. |
 | **Performance** (`test_performance_cache.py`) | Measures Redis hit rates and latency improvements for cached metrics. |
 | **External Systems** (`test_sec_downloader.py`) | Mocks SEC/PatentsView interactions to ensure resilient parsing logic. |
 | **Schema Integrity** (`test_models.py`) | Deep validation of Pydantic V2 models and data transformation rules. |
-| **Scoring Properties** (`test_scoring_properties.py`) | Property-based tests for the scoring engine calculators (VR, HR, Synergy, Confidence). |
+| **Scoring Properties** (`test_scoring_properties.py`) | Property-based tests for scoring engine calculators (VR, HR, Synergy, Confidence). |
+| **Assessment Router** (`test_assessments_router.py`) | Assessment CRUD and status transition validation. |
+| **Backfill Service** (`test_backfill_mock.py`) | Backfill service orchestration with mocked external dependencies. |
+| **CS3 Calculators** (`test_cs3_calculators.py`) | Case Study 3 scoring calculator unit tests. |
+| **Integration Pipeline** (`test_integration_pipeline.py`) | End-to-end integration pipeline execution tests. |
+| **Redis Mocks** (`test_redis_mock.py`) | Redis caching behavior with mocked Redis client. |
+| **Router Coverage** (`test_router_coverage.py`) | Comprehensive coverage across all API routers. |
+| **Rubric Scoring** (`test_rubrics.py`) | Glassdoor rubric scorer keyword matching and dimension scoring. |
+| **S3 Storage** (`test_s3_mock.py`) | S3 storage operations with mocked AWS client. |
+| **Snowflake** (`test_snowflake_mock.py`) | Snowflake database operations with mocked connections. |
+| **Coverage Expansion** (`test_coverage_expansion.py`) | General coverage expansion for edge cases. |
 
 ### Continuous Validation
 The test suite is designed to be run as part of a CI/CD pipeline, ensuring that changes to the `IntegrationPipeline` do not regress scoring accuracy or rate-limit compliance.
