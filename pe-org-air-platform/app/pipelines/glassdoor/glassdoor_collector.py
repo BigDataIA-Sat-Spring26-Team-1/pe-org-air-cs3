@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import re
 import httpx
 from datetime import datetime, date
 from decimal import Decimal
@@ -42,46 +43,130 @@ class RubricCriteria:
     min_keyword_matches: int = 0
     quantitative_threshold: Optional[Decimal] = None
 
+
+def _stem_match(keyword: str, text: str) -> bool:
+    """
+    Match a keyword in text using stem-aware word-boundary matching.
+    
+    Strategy:
+    1. Try exact substring first (fast path for multi-word phrases)
+    2. For single words >= 5 chars, try stem matching by trimming suffix
+       e.g. "analytical" stem "analyt" matches "analysis", "analytics", "analyze"
+    3. For short words or phrases, only do exact match
+    """
+    # Fast path: exact substring
+    if keyword in text:
+        return True
+    
+    # Stem matching for single words that are long enough
+    words = keyword.split()
+    if len(words) == 1 and len(keyword) >= 5:
+        # Create stem by keeping at least 4 chars, trimming up to 3 suffix chars
+        stem_len = max(4, len(keyword) - 3)
+        stem = keyword[:stem_len]
+        # Word-boundary match: stem followed by optional word chars
+        pattern = r'\b' + re.escape(stem) + r'\w*\b'
+        if re.search(pattern, text):
+            return True
+    
+    return False
+
+
 class RubricScorer:
-    # SCORING_KEYWORDS: The specific keywords used for the aggregate formulas
-    # (Separated from the Level structure to ensure formula consistency)
+    # SCORING_KEYWORDS: Expanded with colloquial synonyms that real employees
+    # use in Glassdoor reviews. The original technical terms are preserved;
+    # new additions bridge the vocabulary gap between curated keywords and
+    # casual review language.
     SCORING_KEYWORDS = {
         "innovation": {
             "positive": [
+                # Original technical terms
                 "innovative", "cutting-edge", "forward-thinking",
                 "encourages new ideas", "experimental", "creative freedom",
-                "startup mentality", "move fast", "disruptive"
+                "startup mentality", "move fast", "disruptive",
+                # Colloquial additions - how employees actually talk
+                "new technology", "open to ideas", "think outside the box",
+                "try new things", "modern", "tech-savvy", "evolving",
+                "pioneering", "creative", "fresh ideas", "encouraged to innovate",
+                "bleeding edge", "state of the art", "leading edge",
+                "pushing boundaries", "ahead of the curve", "trailblazing",
+                "invention", "r&d", "research and development",
+                "hackathon", "innovation lab"
             ],
             "negative": [
+                # Original
                 "bureaucratic", "slow to change", "resistant",
                 "outdated", "stuck in old ways", "red tape",
-                "politics", "siloed", "hierarchical"
+                "politics", "siloed", "hierarchical",
+                # Colloquial additions
+                "old fashioned", "micromanagement", "corporate",
+                "stagnant", "no innovation", "legacy", "behind the times",
+                "dinosaur", "archaic", "old-school", "dated"
             ]
         },
         "data_driven": {
             "positive": [
+                # Original technical terms
                 "data-driven", "metrics", "evidence-based",
                 "analytical", "kpis", "dashboards", "data culture",
-                "measurement", "quantitative"
+                "measurement", "quantitative",
+                # Colloquial additions - how employees describe data usage
+                "numbers", "tracked", "reporting", "analytics",
+                "performance review", "goals", "targets",
+                "accountability", "results-oriented", "insights",
+                "transparency", "data", "facts", "objective",
+                "statistics", "reports", "measure results",
+                "performance metrics", "scorecards", "benchmarks",
+                "data analysis", "business intelligence", "bi tools",
+                "tableau", "power bi", "excel", "spreadsheet",
+                # Ground-level terms (banking/retail employee language)
+                "training", "expectations", "monitor", "feedback",
+                "evaluation", "standards", "quota", "productivity",
+                "efficiency", "tracking", "score", "rating",
+                "graded", "assessed", "reviewed", "audit",
+                "compliance", "process", "documented", "systematic"
             ],
             "negative": []
         },
         "ai_awareness": {
             "positive": [
+                # Original technical terms
                 "ai", "artificial intelligence", "machine learning",
                 "automation", "data science", "ml", "algorithms",
-                "predictive", "neural network"
+                "predictive", "neural network",
+                # Colloquial additions - how employees talk about AI/tech
+                "automated", "chatbot", "tech-forward",
+                "digital transformation", "intelligent", "deep learning",
+                "nlp", "computer vision", "robotics", "smart systems",
+                "natural language", "generative ai", "gpt", "copilot",
+                "model training", "data pipeline", "data engineering",
+                "cloud computing", "aws", "azure", "tensorflow",
+                "pytorch", "big data", "advanced analytics"
             ],
             "negative": []
         },
         "change_readiness": {
             "positive": [
+                # Original
                 "agile", "adaptive", "fast-paced", "embraces change",
-                "continuous improvement", "growth mindset"
+                "continuous improvement", "growth mindset",
+                # Colloquial additions
+                "flexible", "open-minded", "willing to learn",
+                "evolving", "modern approach", "progressive",
+                "dynamic", "forward-looking", "constantly improving",
+                "lean", "iterative", "quick to adapt", "nimble",
+                "open to feedback", "learning culture", "receptive",
+                "collaborative", "cross-functional"
             ],
             "negative": [
+                # Original
                 "rigid", "traditional", "slow", "risk-averse",
-                "change resistant", "old school"
+                "change resistant", "old school",
+                # Colloquial additions
+                "resistant to change", "set in their ways",
+                "bureaucracy", "red tape heavy", "inflexible",
+                "stagnant", "won't change", "afraid of change",
+                "stuck", "complacent", "status quo", "no growth"
             ]
         }
     }
@@ -120,7 +205,7 @@ class RubricScorer:
     }
     
     def get_evidence_keywords(self, reviews: List[GlassdoorReview]) -> tuple[List[str], List[str]]:
-        """Helper to extract found keywords for evidence."""
+        """Helper to extract found keywords for evidence using stem matching."""
         found_pos = set()
         found_neg = set()
         
@@ -128,10 +213,10 @@ class RubricScorer:
         
         for config in self.SCORING_KEYWORDS.values():
             for k in config["positive"]:
-                if k in all_text:
+                if _stem_match(k, all_text):
                     found_pos.add(k)
             for k in config["negative"]:
-                if k in all_text:
+                if _stem_match(k, all_text):
                     found_neg.add(k)
                     
         return list(found_pos), list(found_neg)
@@ -308,16 +393,16 @@ class GlassdoorCultureCollector:
             # Text Analysis
             text = ((r.pros or "") + " " + (r.cons or "")).lower()
             
-            # Check keywords for each dimension
+            # Check keywords for each dimension (using stem-aware matching)
             for dim, config in self.scorer.SCORING_KEYWORDS.items():
                 # Positive Matches
                 for k in config["positive"]:
-                    if k in text:
+                    if _stem_match(k, text):
                         dim_scores[dim]["pos"] += weight
                 
                 # Negative Matches
                 for k in config["negative"]:
-                    if k in text:
+                    if _stem_match(k, text):
                         dim_scores[dim]["neg"] += weight
 
         # 2. Calculate Component Scores
