@@ -26,7 +26,7 @@ logger = structlog.get_logger(__name__)
 class IntegrationPipeline:
     """
     Case Study 3 Integration Pipeline.
-    Calculates main scores by fetching raw data bits from Snowflake and SEC-API.
+    Refactored for Airflow DAG usage with granular methods.
     """
 
     def __init__(self):
@@ -36,111 +36,143 @@ class IntegrationPipeline:
         self.culture_collector = GlassdoorCultureCollector()
         self.org_air_calc = OrgAIRCalculator()
 
-    async def run_integration(self, ticker: str) -> Dict[str, Any]:
+    async def get_active_tickers(self) -> List[str]:
+        """Fetch all tickers that should be processed."""
+        companies = await db.fetch_all_companies()
+        return [c['ticker'] for c in companies]
+
+    async def init_company_assessment(self, ticker: str) -> Dict[str, Any]:
         """
-        Executes the full analytical integration for a company.
+        Step 1: Initialize assessment record and fetch base signals.
+        Returns context dict for subsequent tasks.
         """
-        logger.info(f"Starting Integration Pipeline for {ticker}")
+        logger.info(f"Initializing assessment for {ticker}")
         
-        # 1. Resolve Company
         company = await db.fetch_company_by_ticker(ticker)
         if not company:
-            logger.error(f"Company {ticker} not found in database.")
-            return {"error": "Company not found"}
+            raise ValueError(f"Company {ticker} not found")
         
         company_id = company['id']
-        sector = company.get('sector', 'default')
-        position_factor = Decimal(str(company.get('position_factor', 0.5)))
-
-        # 2. Fetch Existing External Signals for dimension bootstrapping
+        
+        # specific logic to get base scores from existing signals
         summary = await db.fetch_company_signal_summary(company_id)
-        logger.info(f"Retrieved signal summary for {ticker}", summary=summary)
         
         # Base dimensions from signals
-        results = {
+        base_scores = {
+            "data_infrastructure": Decimal(str(summary.get('digital_presence_score', 50.0) if summary else 50.0)),
+            "technology_stack": Decimal(str(summary.get('technology_hiring_score', 50.0) if summary else 50.0)),
+            "talent": Decimal(str(summary.get('technology_hiring_score', 50.0) if summary else 50.0)),
+            "leadership": Decimal(str(summary.get('leadership_signals_score', 50.0) if summary else 50.0)),
+            "culture": Decimal(str(summary.get('innovation_activity_score', 50.0) if summary else 50.0))
+        }
+
+        # Create a temporary assessment ID (or use a stable one for the day)
+        assessment_id = str(uuid.uuid4())
+        
+        # Persist base state to DB (e.g., creating a draft assessment)
+        # For now, we'll return this context to be passed to next tasks via XCom
+        return {
             "ticker": ticker,
             "company_id": company_id,
-            "scores": {
-                "data_infrastructure": Decimal(str(summary.get('digital_presence_score', 50.0) if (summary and summary.get('digital_presence_score') is not None) else 50.0)),
-                "technology_stack": Decimal(str(summary.get('technology_hiring_score', 50.0) if (summary and summary.get('technology_hiring_score') is not None) else 50.0)),
-                "talent": Decimal(str(summary.get('technology_hiring_score', 50.0) if (summary and summary.get('technology_hiring_score') is not None) else 50.0)), # Talent maturity = volume/skills
-                "leadership": Decimal(str(summary.get('leadership_signals_score', 50.0) if (summary and summary.get('leadership_signals_score') is not None) else 50.0)),
-                "culture": Decimal(str(summary.get('innovation_activity_score', 50.0) if (summary and summary.get('innovation_activity_score') is not None) else 50.0))
-            },
-            "signals_added": 0
+            "assessment_id": assessment_id,
+            "base_scores": {k: float(v) for k, v in base_scores.items()},
+            "sector": company.get('sector', 'default'),
+            "position_factor": float(company.get('position_factor', 0.5))
         }
-        logger.info(f"Initialized base scores for {ticker}", scores={k: float(v) for k, v in results["scores"].items()})
 
-        # 3. SEC Rubric Scoring
+    async def analyze_sec_rubric(self, context: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Step 2: Run SEC Rubric Analysis.
+        """
+        company_id = context['company_id']
+        logger.info(f"Running SEC Rubric Analysis for {context['ticker']}")
+        
         chunks = await db.fetch_sec_chunks_by_company(company_id, limit=2000)
-        full_text = ""
-        if chunks:
-            full_text = "\n".join([c['chunk_text'] for c in chunks if c.get('chunk_text')])
-            
-            tasks = [
-                ("use_case_portfolio", SignalSource.SEC_ITEM_1),
-                ("ai_governance", SignalSource.SEC_ITEM_1A),
-                ("leadership", SignalSource.SEC_ITEM_7)
-            ]
-            
-            for dim, source in tasks:
-                res = self.rubric_scorer.score_dimension(dim, full_text, {})
-                if float(res.score) > 10:
-                    await self._save_signal(company_id, source.value, "SEC Analytical Rubric", res.score, res.confidence, res.rationale, {
-                        "matched_keywords": res.matched_keywords,
-                        "level": res.level.name
-                    })
-                    # Blend with existing signals for dimension (Prototype logic)
-                    if dim in results["scores"]:
-                        results["scores"][dim] = (results["scores"][dim] * Decimal("0.3") + res.score * Decimal("0.7"))
-                    else:
-                        results["scores"][dim] = res.score
-                    results["signals_added"] += 1
+        if not chunks:
+            logger.warning(f"No SEC chunks found for {context['ticker']}")
+            return {}
 
-        # 4. Board Analysis
+        full_text = "\n".join([c['chunk_text'] for c in chunks if c.get('chunk_text')])
+        
+        results = {}
+        tasks = [
+            ("use_case_portfolio", SignalSource.SEC_ITEM_1),
+            ("ai_governance", SignalSource.SEC_ITEM_1A),
+            ("leadership", SignalSource.SEC_ITEM_7)
+        ]
+        
+        for dim, source in tasks:
+            res = self.rubric_scorer.score_dimension(dim, full_text, {})
+            if float(res.score) > 10:
+                await self._save_signal(company_id, source.value, "SEC Analytical Rubric", res.score, res.confidence, res.rationale, {
+                    "matched_keywords": res.matched_keywords,
+                    "level": res.level.name
+                })
+                results[dim] = float(res.score)
+                
+        return results
+
+    async def analyze_board(self, context: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Step 3: Run Board Composition Analysis.
+        """
+        ticker = context['ticker']
+        company_id = context['company_id']
+        logger.info(f"Running Board Analysis for {ticker}")
+        
         try:
             members, committees = self.board_analyzer.fetch_board_data(ticker)
             if members:
-                strategy_text = ""
-                if "Item 1. Business" in full_text:
-                    strategy_text = full_text.split("Item 1. Business")[1][:5000]
+                # We need strategy text from SEC 10-K Item 1 usually
+                # For now, we'll fetch a snippet if possible or pass empty
+                chunks = await db.fetch_sec_chunks_by_company(company_id, limit=50) 
+                strategy_text = " ".join([c['chunk_text'] for c in chunks[:5]]) if chunks else ""
                 
                 gov_signal = self.board_analyzer.analyze_board(company_id, ticker, members, committees, strategy_text)
-                await self._save_signal(company_id, SignalCategory.BOARD_COMPOSITION, "Board Audit", gov_signal.governance_score, gov_signal.confidence, "Board composition analysis for tech oversight.", {
+                await self._save_signal(company_id, SignalCategory.BOARD_COMPOSITION, "Board Audit", gov_signal.governance_score, gov_signal.confidence, "Board composition analysis.", {
                     "ai_experts": gov_signal.ai_experts,
                     "committees": gov_signal.relevant_committees,
                     "independent_ratio": float(gov_signal.independent_ratio)
                 })
-                # Governance score blend
-                if "ai_governance" in results["scores"]:
-                    results["scores"]["ai_governance"] = (results["scores"]["ai_governance"] * Decimal("0.6") + Decimal(str(gov_signal.governance_score)) * Decimal("0.4"))
-                else:
-                    results["scores"]["ai_governance"] = Decimal(str(gov_signal.governance_score))
-                
-                results["signals_added"] += 1
+                return {"ai_governance": float(gov_signal.governance_score)}
         except Exception as e:
             logger.error(f"Board analysis failed for {ticker}: {e}")
+            
+        return {}
 
-        # 5. Talent Concentration Analysis (TC Modifies HR, lacks parity with Talent Maturity score)
-        hr_modifier = Decimal("1.0")
+    async def analyze_talent(self, context: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Step 4: Run Talent Concentration Analysis.
+        Returns dict with HR modifier or scores.
+        """
+        company_id = context['company_id']
+        logger.info(f"Running Talent Analysis for {context['ticker']}")
+        
         try:
             talent_risk = await self.talent_calculator.get_company_talent_risk(company_id, db)
             tc_score = Decimal(str(talent_risk["talent_concentration_score"]))
             
-            # Persist TC signal but don't overwrite Talent Maturity dimension
             await self._save_signal(
                 company_id, SignalCategory.TALENT_CONCENTRATION, "Talent Scorer", 
                 tc_score * 100, Decimal("0.85"), 
                 "Talent concentration risk assessment.", talent_risk["breakdown"]
             )
             
-            # Calculate HR Modifier from Prototype: 1 - 0.15 * max(0, TC - 0.25)
-            hr_modifier = Decimal(str(talent_risk["talent_risk_adjustment"]))
-            results["signals_added"] += 1
+            return {
+                "hr_modifier": float(talent_risk["talent_risk_adjustment"])
+            }
         except Exception as e:
-            logger.error(f"Talent analysis failed for {ticker}: {e}")
+            logger.error(f"Talent analysis failed for {context['ticker']}: {e}")
+            return {"hr_modifier": 1.0}
 
-        # 6. Glassdoor Culture Blend
+    async def analyze_culture(self, context: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Step 5: Run Glassdoor Culture Analysis.
+        """
+        company_id = context['company_id']
+        ticker = context['ticker']
+        logger.info(f"Running Cultural Analysis for {ticker}")
+        
         try:
             raw_reviews_data = await db.fetch_glassdoor_reviews_for_talent(company_id)
             if raw_reviews_data:
@@ -164,25 +196,59 @@ class IntegrationPipeline:
                         "Cultural alignment and AI awareness among employees.",
                         {"innovation": float(culture_signal.innovation_score), "ai_awareness": float(culture_signal.ai_awareness_score)}
                     )
-                    # Blend culture
-                    results["scores"]["culture"] = (results["scores"]["culture"] * Decimal("0.5") + culture_signal.overall_sentiment * Decimal("0.5"))
-                    results["signals_added"] += 1
+                    return {"culture": float(culture_signal.overall_sentiment)}
         except Exception as e:
             logger.error(f"Culture analysis failed for {ticker}: {e}")
+            
+        return {}
 
-        # 7. Final Org-AI-R Aggregation
+    async def calculate_final_score(self, context: Dict[str, Any], sec_results: Dict, board_results: Dict, talent_results: Dict, culture_results: Dict) -> Dict[str, Any]:
+        """
+        Step 6: Aggregate all results and calculate final Org-AI-R score.
+        """
+        ticker = context['ticker']
+        company_id = context['company_id']
+        assessment_id = context['assessment_id']
+        logger.info(f"Calculating Final Score for {ticker}")
+        
+        # Merge all Dimension Scores directly
+        # Base scores from init
+        scores = {k: Decimal(str(v)) for k, v in context['base_scores'].items()}
+        
+        # Merge SEC results
+        for k, v in sec_results.items():
+            if k in scores:
+                scores[k] = (scores[k] * Decimal("0.3") + Decimal(str(v)) * Decimal("0.7"))
+            else:
+                scores[k] = Decimal(str(v))
+
+        # Merge Board results
+        if "ai_governance" in board_results:
+            val = Decimal(str(board_results["ai_governance"]))
+            if "ai_governance" in scores:
+                scores["ai_governance"] = (scores["ai_governance"] * Decimal("0.6") + val * Decimal("0.4"))
+            else:
+                scores["ai_governance"] = val
+
+        # Merge Culture results
+        if "culture" in culture_results:
+            val = Decimal(str(culture_results["culture"]))
+            scores["culture"] = (scores["culture"] * Decimal("0.5") + val * Decimal("0.5"))
+
+        # Dimensions List
         final_dimensions = ["data_infrastructure", "ai_governance", "technology_stack", "talent", "leadership", "use_case_portfolio", "culture"]
         dimension_inputs = {}
         for d in final_dimensions:
-            dimension_inputs[d] = results["scores"].get(d, Decimal("50.0"))
-        
-        dimension_confidences = [Decimal("0.8")] * len(dimension_inputs)
-        
-        # Calculate HR Base with Talent Risk Adjustment
-        # hr_score = clamp(Decimal("70.0") * hr_modifier * (Decimal("1") + Decimal("0.15") * pf))
+            dimension_inputs[d] = scores.get(d, Decimal("50.0"))
+
+        hr_modifier = Decimal(str(talent_results.get("hr_modifier", 1.0)))
         hr_base_adjusted = Decimal("70.0") * hr_modifier
         
-        # Use parity alpha/beta to match prototype (0.6, 0.28, 0.12 weights)
+        position_factor = Decimal(str(context.get('position_factor', 0.5)))
+        sector = context.get('sector', 'default')
+
+        dimension_confidences = [Decimal("0.8")] * len(dimension_inputs)
+
         final_org_air = self.org_air_calc.calculate_org_air(
             dimension_scores=dimension_inputs,
             dimension_confidences=dimension_confidences,
@@ -193,9 +259,8 @@ class IntegrationPipeline:
             alpha=Decimal("0.60"), # V^R vs H^R within 88%
             beta=Decimal("0.12")   # Synergy weight
         )
-        
-        # 8. Persistence
-        assessment_id = str(uuid.uuid4())
+
+        # Persistence
         await db.create_assessment({
             "id": assessment_id, "company_id": company_id, 
             "assessment_type": "INTEGRATED_CS3", "assessment_date": date.today().isoformat(),
@@ -231,11 +296,11 @@ class IntegrationPipeline:
             assessment_id
         ))
 
-        results["final_score"] = final_org_air
-        results["assessment_id"] = assessment_id
-        
-        logger.info(f"Integration complete for {ticker}. Assessment ID: {assessment_id}")
-        return results
+        return {
+            "ticker": ticker,
+            "final_score": final_org_air,
+            "assessment_id": assessment_id
+        }
 
     async def _save_signal(self, company_id: str, category: str, source: str, score: Decimal, confidence: Decimal, rationale: str, metadata: dict):
         hash_input = f"{company_id}{category}{score}"
@@ -254,5 +319,15 @@ class IntegrationPipeline:
             "metadata": metadata
         }
         await db.create_external_signal(signal)
+
+    # Legacy method wrapper for backward compatibility if needed
+    async def run_integration(self, ticker: str) -> Dict[str, Any]:
+        """Legacy wrapper for backward compatibility."""
+        context = await self.init_company_assessment(ticker)
+        sec_res = await self.analyze_sec_rubric(context)
+        board_res = await self.analyze_board(context)
+        talent_res = await self.analyze_talent(context)
+        culture_res = await self.analyze_culture(context)
+        return await self.calculate_final_score(context, sec_res, board_res, talent_res, culture_res)
 
 integration_pipeline = IntegrationPipeline()

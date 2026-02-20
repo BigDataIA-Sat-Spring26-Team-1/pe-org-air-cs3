@@ -9,10 +9,8 @@ x-airflow-common:
     - ../.env
   environment:
     &airflow-common-env
-    AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://airflow:airflow@postgres/airflow
-    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
-    AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
@@ -90,33 +88,7 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
-  airflow-worker:
-    <<: *airflow-common
-    command: celery worker
-    healthcheck:
-      test:
-        - "CMD-SHELL"
-        - 'celery --app airflow.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}"'
-      interval: 10s
-      timeout: 10s
-      retries: 5
-    environment:
-      - SNOWFLAKE_ACCOUNT=${SNOWFLAKE_ACCOUNT}
-      - SNOWFLAKE_USER=${SNOWFLAKE_USER}
-      - SNOWFLAKE_PASSWORD=${SNOWFLAKE_PASSWORD}
-      - SNOWFLAKE_DATABASE=${SNOWFLAKE_DATABASE}
-      - SNOWFLAKE_SCHEMA=${SNOWFLAKE_SCHEMA}
-      - SNOWFLAKE_WAREHOUSE=${SNOWFLAKE_WAREHOUSE}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - S3_BUCKET=${S3_BUCKET}
-      - AWS_FOLDER=${AWS_FOLDER}
-      - AWS_REGION=${AWS_REGION}
-      - PATENTSVIEW_API_KEY=${PATENTSVIEW_API_KEY}
-      - WEXTRACTOR_API_KEY=${WEXTRACTOR_API_KEY}
-      - SECRET_KEY=${SECRET_KEY}
+
 
   airflow-triggerer:
     <<: *airflow-common
