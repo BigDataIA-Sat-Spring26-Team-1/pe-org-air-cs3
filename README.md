@@ -38,115 +38,119 @@ The **PE Org-AI-R Platform** is a sophisticated data orchestration and analytics
 ## 📂 Project Structure
 ```text
 .
-├── pe-org-air-platform/                     # Main application monorepo
-│   ├── app/                                  # FastAPI backend application
-│   │   ├── main.py                           # Application entry point
-│   │   ├── config.py                         # Settings & environment config
-│   │   ├── logging_conf.py                   # Structured logging setup
-│   │   ├── routers/                          # API route handlers
-│   │   │   ├── assessments.py                #   Assessment CRUD & lifecycle
-│   │   │   ├── companies.py                  #   Company management endpoints
-│   │   │   ├── signals.py                    #   Signal collection triggers
-│   │   │   ├── sec.py                        #   SEC filing queries
-│   │   │   ├── metrics.py                    #   Scoring & analytics
-│   │   │   ├── evidence.py                   #   Evidence retrieval
-│   │   │   ├── industries.py                 #   Industry lookup
-│   │   │   ├── integration.py                #   Integration pipeline trigger
-│   │   │   ├── health.py                     #   Health check & readiness
-│   │   │   ├── testing.py                    #   Test/debug endpoints
-│   │   │   └── config.py                     #   Runtime config endpoints
-│   │   ├── models/                           # Pydantic V2 data models
-│   │   │   ├── company.py                    #   Company schema
-│   │   │   ├── assessment.py                 #   Assessment schema
-│   │   │   ├── signals.py                    #   Signal schema
-│   │   │   ├── sec.py                        #   SEC document schema
-│   │   │   ├── scoring.py                    #   Scoring result models
-│   │   │   ├── glassdoor_models.py           #   Glassdoor review models
-│   │   │   ├── board.py                      #   Board composition models
-│   │   │   ├── dimension.py                  #   Scoring dimension schema
-│   │   │   ├── industry.py                   #   Industry taxonomy
-│   │   │   ├── registry.py                   #   Model registry
-│   │   │   ├── enums.py                      #   Shared enumerations
-│   │   │   └── common.py                     #   Common base models
-│   │   ├── scoring/                          # AI Readiness Scoring Engine
-│   │   │   ├── rubric_scorer.py              #   Rubric-based scoring logic
-│   │   │   ├── calculators.py                #   VR, HR, Synergy, Confidence, OrgAIR calculators
-│   │   │   ├── evidence_mapper.py            #   Signal → Dimension evidence mapping
-│   │   │   ├── talent_analyzer.py            #   Talent concentration analysis
-│   │   │   ├── position_factor.py            #   Position-factor calculator
-│   │   │   └── utils.py                      #   Scoring utility functions
-│   │   ├── pipelines/                        # Data collection pipelines
-│   │   │   ├── integration_pipeline.py       #   Master integration orchestrator
-│   │   │   ├── board_analyzer.py             #   Board composition analyzer
-│   │   │   ├── sec/                          #   SEC EDGAR pipeline
-│   │   │   │   ├── pipeline.py               #     Full SEC orchestrator
-│   │   │   │   ├── downloader.py             #     EDGAR filing downloader
-│   │   │   │   ├── parser.py                 #     10-K/10-Q text parser
-│   │   │   │   ├── chunker.py                #     Document chunking
-│   │   │   │   └── components.py             #     Airflow-compatible components
-│   │   │   ├── glassdoor/                    #   Glassdoor culture pipeline
-│   │   │   │   ├── glassdoor_collector.py     #     Review fetcher & rubric scorer
-│   │   │   │   ├── glassdoor_orchestrator.py  #     Batch orchestration & persistence
-│   │   │   │   └── glassdoor_queries.py       #     Snowflake query templates
-│   │   │   └── external_signals/             #   External signal collectors
-│   │   │       ├── orchestrator.py            #     Signal collection orchestrator
-│   │   │       ├── job_collector.py           #     AI job-market scraper (JobSpy)
-│   │   │       ├── patent_collector.py        #     PatentsView API collector
-│   │   │       ├── tech_stack_collector.py    #     BuiltWith / Playwright scanner
-│   │   │       ├── leadership_collector.py    #     C-suite AI leadership signals
-│   │   │       └── utils.py                   #     Shared pipeline utilities
-│   │   ├── services/                         # Shared infrastructure services
-│   │   │   ├── snowflake.py                  #   Snowflake singleton manager
-│   │   │   ├── redis_cache.py                #   Redis caching layer
-│   │   │   ├── s3_storage.py                 #   AWS S3 storage client
-│   │   │   ├── backfill.py                   #   Data backfill service
-│   │   │   └── sector_config.py              #   Sector/industry configuration
-│   │   └── database/                         # SQL schema definitions
-│   │       ├── schema.sql                    #   Core tables (companies, assessments)
-│   │       ├── schema_sec.sql                #   SEC documents & chunks
-│   │       ├── schema_signal.sql             #   Signal storage tables
-│   │       ├── schema_culture.sql            #   Glassdoor culture scores
-│   │       └── seed.sql                      #   Initial seed data
-│   ├── dags/                                 # Airflow DAG definitions
-│   │   ├── integration_pipeline_dag.py       #   Full scoring pipeline (daily)
-│   │   ├── sec_ingestion_dag.py              #   SEC filing ingestion (daily)
-│   │   ├── sec_backfill_dag.py               #   SEC backfill (manual trigger)
-│   │   └── sec_monitor_dag.py                #   SEC data quality audit (weekly)
-│   ├── docker/                               # Docker & Airflow infrastructure
-│   │   ├── Dockerfile                        #   Multi-service Docker image
-│   │   ├── docker-compose.yml                #   Full stack orchestration
-│   │   ├── dags/                             #   Airflow DAG mount point
-│   │   ├── logs/                             #   Airflow log volume
-│   │   └── plugins/                          #   Airflow plugins mount
-│   ├── frontend/                             # Next.js 15 frontend
-│   │   ├── src/app/                          #   App Router pages & components
-│   │   ├── public/                           #   Static assets
-│   │   ├── Dockerfile                        #   Frontend container config
-│   │   └── package.json                      #   Node.js dependencies
-│   ├── tests/                                # Test suite
-│   │   ├── test_api.py                       #   REST endpoint tests
-│   │   ├── test_flows.py                     #   End-to-end business logic
-│   │   ├── test_concurrency.py               #   Parallel execution stress tests
-│   │   ├── test_performance_cache.py         #   Redis performance benchmarks
-│   │   ├── test_sec_downloader.py            #   SEC integration mocks
-│   │   ├── test_models.py                    #   Pydantic model validation
-│   │   ├── test_scoring_properties.py        #   Scoring engine property tests
-│   │   └── conftest.py                       #   Shared test fixtures
-│   ├── requirements.txt                      # Python dependencies
-│   ├── pyproject.toml                        # Project metadata & build config
-│   └── pytest.ini                            # Pytest configuration
-├── Prototyping/                              # Research & prototyping notebooks
-│   ├── Glassdoor review analysis/            #   Glassdoor review analysis POC
-│   ├── SEC-Edgar/                            #   SEC EDGAR exploration
-│   ├── Signals/                              #   Signal pipeline prototypes
-│   ├── TalentAnalyzerPOC/                    #   Talent scoring proof-of-concept
-│   ├── scoring_poc/                          #   Scoring engine POC
-│   ├── glassdoor_pipeline_validation/        #   Glassdoor pipeline tests
-│   ├── airflow_implementation_validation/    #   Airflow DAG validation tests
-│   ├── Integration_testing/                  #   Integration pipeline tests
-│   ├── hiring_debug/                         #   Hiring signal debugging
-│   └── leadership_debug/                     #   Leadership signal debugging
-└── README.md                                 # This file
+  |docker
+  |--|Dockerfile
+  |--|docker-compose.yml
+  |--|dags/                          # Airflow DAG mount point
+  |--|logs/                          # Airflow log volume
+  |--|plugins/                       # Airflow plugins mount
+  |dags
+  |--|integration_pipeline_dag.py    # Full scoring pipeline (daily)
+  |--|sec_ingestion_dag.py           # SEC filing ingestion (daily)
+  |--|sec_backfill_dag.py            # SEC backfill (manual trigger)
+  |--|sec_monitor_dag.py             # SEC data quality audit (weekly)
+  |app
+  |--|routers
+  |--|--|metrics.py
+  |--|--|signals.py
+  |--|--|routers_utils.py
+  |--|--|config.py
+  |--|--|health.py
+  |--|--|__init__.py
+  |--|--|sec.py
+  |--|--|companies.py
+  |--|--|testing.py
+  |--|--|assessments.py
+  |--|--|evidence.py
+  |--|--|industries.py
+  |--|--|integration.py               # Integration pipeline trigger
+  |--|database
+  |--|--|seed.sql
+  |--|--|schema.sql
+  |--|--|schema_sec.sql
+  |--|--|schema_signal.sql
+  |--|--|schema_culture.sql           # Glassdoor culture scores
+  |--|--|__init__.py
+  |--|config.py
+  |--|__init__.py
+  |--|pipelines
+  |--|--|integration_pipeline.py      # Master integration orchestrator
+  |--|--|board_analyzer.py            # Board composition analyzer
+  |--|--|sec
+  |--|--|--|pipeline.py
+  |--|--|--|downloader.py
+  |--|--|--|parser.py
+  |--|--|--|chunker.py
+  |--|--|--|components.py             # Airflow-compatible task components
+  |--|--|glassdoor
+  |--|--|--|glassdoor_collector.py     # Review fetcher & rubric scorer
+  |--|--|--|glassdoor_orchestrator.py  # Batch orchestration & persistence
+  |--|--|--|glassdoor_queries.py       # Snowflake query templates
+  |--|--|external_signals
+  |--|--|--|orchestrator.py
+  |--|--|--|job_collector.py
+  |--|--|--|patent_collector.py
+  |--|--|--|tech_stack_collector.py
+  |--|--|--|leadership_collector.py
+  |--|--|--|utils.py
+  |--|logging_conf.py
+  |--|models
+  |--|--|assessment.py
+  |--|--|signals.py
+  |--|--|enums.py
+  |--|--|company.py
+  |--|--|registry.py
+  |--|--|__init__.py
+  |--|--|common.py
+  |--|--|sec.py
+  |--|--|industry.py
+  |--|--|dimension.py
+  |--|--|scoring.py                   # Scoring result models
+  |--|--|glassdoor_models.py          # Glassdoor review models
+  |--|--|board.py                     # Board composition models
+  |--|scoring                         # AI Readiness Scoring Engine
+  |--|--|rubric_scorer.py             # Rubric-based scoring logic
+  |--|--|calculators.py               # VR, HR, Synergy, Confidence, OrgAIR
+  |--|--|evidence_mapper.py           # Signal → Dimension evidence mapping
+  |--|--|talent_analyzer.py           # Talent concentration analysis
+  |--|--|position_factor.py           # Position-factor calculator
+  |--|--|utils.py
+  |--|main.py
+  |--|services
+  |--|--|__init__.py
+  |--|--|backfill.py
+  |--|--|snowflake.py
+  |--|--|s3_storage.py
+  |--|--|redis_cache.py
+  |--|--|sector_config.py             # Sector/industry configuration
+  |pytest.ini
+  |frontend
+  |--|postcss.config.mjs
+  |--|Dockerfile
+  |--|README.md
+  |--|public
+  |--|package.json
+  |--|tsconfig.json
+  |--|next.config.ts
+  |--|src
+  |--|--|app
+  |requirements.txt
+  |pyproject.toml
+  |tests
+  |--|test_concurrency.py
+  |--|conftest.py
+  |--|test_performance_cache.py
+  |--|test_flows.py
+  |--|test_sec_downloader.py
+  |--|test_models.py
+  |--|test_api.py
+  |--|test_scoring_properties.py      # Scoring engine property tests
+  |README.md
+  |logs
+  |--|app.log
+  |data
+  |--|sec_downloads
+  |--|README.md
 ```
 
 ---
