@@ -76,18 +76,20 @@ async def get_readiness_report():
         
     # Parallel fetch
     import asyncio
-    leaderboard, docs, chunks, sectors = await asyncio.gather(
+    leaderboard, docs, chunks, sectors, deep_assessments = await asyncio.gather(
         db.fetch_readiness_leaderboard(),
         db.fetch_documents_distribution(),
         db.fetch_chunks_distribution(),
-        db.fetch_sector_readiness()
+        db.fetch_sector_readiness(),
+        db.fetch_deep_assessments_leaderboard()
     )
     
     report = {
         "leaderboard": leaderboard,
         "documents": docs,
         "chunks": chunks,
-        "sectors": sectors
+        "sectors": sectors,
+        "deep_assessments": deep_assessments
     }
     
     cache.set(cache_key, report, ttl_seconds=300)

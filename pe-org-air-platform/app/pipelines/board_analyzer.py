@@ -41,10 +41,10 @@ class BoardCompositionAnalyzer:
         r'\bCDO\b',
         r'\bCAIO\b',
         r'\bchief\s+ai\b',
-        r'\bchief\s+technology\b',
-        r'\bCTO\b',
-        r'\bchief\s+digital\b',
-        r'\bdata\s+science\b',
+        r'\bchief\s+information\b',
+        r'\bCIO\b',
+        r'\btechnology\s+and\s+data\b',
+        r'\bdigital\s+transformation\b',
         r'\banalytics\b',
         r'\bdigital\s+transformation\b',
     ]
@@ -56,6 +56,7 @@ class BoardCompositionAnalyzer:
         r'\bdigital\s+(strategy\s+)?committee\b',
         r'\binnovation\s+committee\b',
         r'\bIT\s+committee\b',
+        r'\bpublic\s+responsibility\s+and\s+technology\b',
         r'\btechnology\s+and\s+cybersecurity\b',
         r'\binformation\s+technology\s+committee\b',
     ]
@@ -245,7 +246,10 @@ class BoardCompositionAnalyzer:
         return 0
 
     def fetch_board_data(self, ticker: str) -> Tuple[List[BoardMember], List[str]]:
-        """Fetches board data from sec-api.io."""
+        """Fetches board data from sec-api.io with improved deduplication."""
+        import structlog
+        api_logger = structlog.get_logger()
+        
         payload = {
             "query": f"ticker:{ticker}",
             "from": 0,
@@ -258,7 +262,7 @@ class BoardCompositionAnalyzer:
             "Content-Type": "application/json"
         }
 
-        print(f"Fetching board data for {ticker}...")
+        api_logger.debug("fetching_board_data", ticker=ticker)
 
         try:
             with httpx.Client(timeout=10.0) as client:
@@ -271,19 +275,24 @@ class BoardCompositionAnalyzer:
                 data = response.json()
 
             if not data.get('data') or len(data['data']) == 0:
-                print(f"No data found for ticker {ticker}")
+                api_logger.warning("no_board_data_found", ticker=ticker)
                 return [], []
 
             latest_filing = data['data'][0]
             api_directors = latest_filing.get('directors', [])
             
-            board_members = []
+            # Sort by name length descending to ensure full names act as master records
+            sorted_directors = sorted(api_directors, key=lambda x: len(x.get('name', '')), reverse=True)
+            
+            unique_members: Dict[str, BoardMember] = {}
             all_committees = set()
 
-            for d in api_directors:
-                name = d.get('name', 'Unknown')
+            for d in sorted_directors:
+                name = d.get('name', 'Unknown').strip()
+                if not name or name == 'Unknown':
+                    continue
+                    
                 title = d.get('position', '') or ""
-                
                 tenure_years = self._calculate_tenure(d.get('dateFirstElected'))
                 is_independent = bool(d.get('isIndependent'))
 
@@ -291,25 +300,67 @@ class BoardCompositionAnalyzer:
                 bio_text = ", ".join(qualifications) if qualifications else ""
                 
                 committees_data = d.get('committeeMemberships', [])
-                clean_committees = []
+                current_committees = []
                 for c in committees_data:
                     c_name = c if isinstance(c, str) else c.get('name', '')
                     if c_name:
-                        clean_committees.append(c_name)
+                        current_committees.append(c_name)
                         all_committees.add(c_name)
 
-                member = BoardMember(
+                # Normalize name for mapping
+                clean_name = re.sub(r'^(Mr\.|Ms\.|Mrs\.|Dr\.|Messrs\.)\s+', '', name, flags=re.IGNORECASE)
+                
+                # Check for existing match using part-based subset analysis
+                existing_key = None
+                name_parts = set(clean_name.lower().replace('.', '').split())
+                surname = clean_name.split()[-1].lower() if clean_name else ""
+                
+                for key in list(unique_members.keys()):
+                    key_parts = set(key.lower().replace('.', '').split())
+                    key_surname = key.split()[-1].lower() if key else ""
+                    
+                    if surname == key_surname:
+                        # If surnames match, check if one set of name parts is a subset of the other
+                        if name_parts.issubset(key_parts) or key_parts.issubset(name_parts):
+                            existing_key = key
+                            break
+                
+                current_member = BoardMember(
                     name=name,
                     title=title,
                     bio=bio_text,
                     is_independent=is_independent,
                     tenure_years=tenure_years,
-                    committees=clean_committees
+                    committees=current_committees
                 )
-                board_members.append(member)
 
-            return board_members, list(all_committees)
+                if existing_key:
+                    existing = unique_members[existing_key]
+                    # Merge Logic: Keep richer information
+                    # 1. Update master name if current one is longer
+                    if len(name) > len(existing.name):
+                        unique_members.pop(existing_key)
+                        unique_members[clean_name] = current_member
+                        target = current_member
+                    else:
+                        target = existing
+                    
+                    # 2. Combine and deduplicate committees
+                    target.committees = list(set(target.committees + current_committees))
+                    
+                    # 3. Keep longer title and bio
+                    if len(title) > len(target.title):
+                        target.title = title
+                    if len(bio_text) > len(target.bio):
+                        target.bio = bio_text
+                else:
+                    unique_members[clean_name] = current_member
+
+            final_members = list(unique_members.values())
+            api_logger.info("board_members_resolved", ticker=ticker, original_count=len(api_directors), resolved_count=len(final_members))
+            
+            return final_members, list(all_committees)
 
         except Exception as e:
-            print(f"Error fetching data: {e}")
+            api_logger.error("board_data_fetch_failed", error=str(e))
             return [], []

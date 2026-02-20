@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from app.config import settings
 from app.services.snowflake import db
 from app.logging_conf import setup_logging, get_logger
-from app.routers import companies, assessments, health, industries, config, signals, sec, evidence, metrics, testing
+from app.routers import companies, assessments, health, industries, config, signals, sec, evidence, metrics, testing, integration
 
 # Setup logging
 setup_logging()
@@ -68,6 +68,7 @@ async def lifespan(app: FastAPI):
         await execute_sql_file("app/database/schema.sql", "schema initialization")
         await execute_sql_file("app/database/schema_sec.sql", "SEC schema initialization")
         await execute_sql_file("app/database/schema_signal.sql", "signals schema initialization")
+        await execute_sql_file("app/database/schema_culture.sql", "culture schema initialization")
 
         # 3. Check for Seed Data
         try:
@@ -135,6 +136,7 @@ app.include_router(evidence.router, prefix="/api/v1/evidence", tags=["Evidence"]
 app.include_router(assessments.router, prefix="/api/v1", tags=["Assessments"])
 app.include_router(metrics.router, prefix="/api/v1/metrics", tags=["Metrics"])
 app.include_router(testing.router, prefix="/api/v1/system", tags=["System Testing"])
+app.include_router(integration.router, prefix="/api/v1", tags=["Integration"])
 
 @app.get("/")
 async def root():

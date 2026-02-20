@@ -61,63 +61,59 @@ class LeadershipCollector:
                         break # One detection per search result
         return detections
 
-    def _find_internal_signals(self, company_name: str, ticker: str = None) -> List[Dict[str, str]]:
-        """Scans local job evidence (if available) for leadership mentions."""
-        results = []
-        jobs_file = "processed_jobs.csv" # Standard name used in v2
-        
-        if not os.path.exists(jobs_file):
-            return results
-
-        try:
-            df = pd.read_csv(jobs_file)
-            clean = company_name.split()[0].lower()
-            for _, row in df.iterrows():
-                l_company = str(row.get('company', '')).lower()
-                if clean not in l_company and (not ticker or ticker.lower() not in l_company):
-                    continue
-                title = str(row.get('title', '')).lower()
-                desc = str(row.get('description', '')).lower()
-                context = title + " " + desc
-                
-                # Look for senior AI vacancies with strict word boundaries
-                seniority_pattern = r'\b(director|head|vp|chief|president|gm)\b'
-                ai_pattern = r'\b(ai|ml|data science|machine learning|artificial intelligence)\b'
-                
-                if re.search(seniority_pattern, title) and re.search(ai_pattern, title):
-                    results.append({
-                        "role": title.upper(),
-                        "tier": self._assess_rank(title),
-                        "source": "Internal Recruitment"
-                    })
-        except Exception:
-            pass
-        return results
 
     async def collect(self, company_name: str, ticker: str = None) -> CollectorResult:
-        """Identifies leadership indicators using both news and internal data."""
+        """Identifies leadership indicators using news, board data, and internal markers."""
         logger.info(f"Scanning leadership structure for {company_name}")
         
+        from app.services.snowflake import db
+        all_hits = []
         try:
+            # 1. Search public records (News/Press Releases)
             public_hits = await self._search_public_records(company_name)
-            internal_hits = self._find_internal_signals(company_name, ticker)
-            all_hits = public_hits + internal_hits
+            all_hits.extend(public_hits)
+            
+            # 2. Look for internal leadership in Snowflake (Jobs)
+            company_rec = await db.fetch_company_by_ticker(ticker) if ticker else None
+            if company_rec:
+                job_descs = await db.fetch_all(
+                    "SELECT title, description FROM signal_evidence WHERE company_id = %s AND category = 'technology_hiring'", 
+                    (company_rec['id'],)
+                )
+                for job in job_descs:
+                    title = job.get('title', '').lower()
+                    if any(role in title for role in self.TARGET_ROLES):
+                        all_hits.append({
+                            "role": title.upper(),
+                            "tier": self._assess_rank(title),
+                            "context": "Senior AI role detected in recruitment signals.",
+                            "source": "Internal Recruitment"
+                        })
+
         except Exception as e:
-            logger.error(f"Leadership collection failed: {e}")
-            return self._empty_result(f"Leadership scan failed: {str(e)}")
-
-
+            logger.error(f"Leadership collection failed: {e}", exc_info=True)
+            # Proceed with whatever hits we found before the crash
+        
         if not all_hits:
             return self._empty_result(f"No AI leadership signals found for {company_name}")
 
-        # Tiers are weighted by organizational impact, with strategic roles carrying the most weight
+        # Tiers are weighted by organizational impact
         tiers = set(h["tier"] for h in all_hits)
         base_score = 0
-        if "STRATEGIC" in tiers: base_score = 60
-        elif "OPERATIONAL" in tiers: base_score = 45
-        elif "MANAGEMENT" in tiers: base_score = 30
+        if "STRATEGIC" in tiers: base_score = 65 # Slightly higher due to board signals
+        elif "OPERATIONAL" in tiers: base_score = 50
+        elif "MANAGEMENT" in tiers: base_score = 35
         
-        bonus = min(len(all_hits) * 8, 40)
+        # Deduplicate hits by role and source to avoid scoring twice
+        unique_hits = []
+        seen = set()
+        for h in all_hits:
+            key = f"{h['role']}_{h['source']}"
+            if key not in seen:
+                unique_hits.append(h)
+                seen.add(key)
+
+        bonus = min(len(unique_hits) * 7, 35)
         final_score = min(base_score + bonus, 100)
 
         evidence_items = [
@@ -126,9 +122,9 @@ class LeadershipCollector:
                 description=h.get('context', 'Strategic AI Alignment Signal'),
                 tags=[h['tier'], "Leadership", "Organization"],
                 date=datetime.now().date().isoformat(),
-                metadata={"role": h.get('role'), "impact": h.get('tier')}
+                metadata={"role": h.get('role'), "impact": h.get('tier'), "source_type": h.get('source')}
             )
-            for h in all_hits
+            for h in unique_hits
         ]
 
         return CollectorResult(
