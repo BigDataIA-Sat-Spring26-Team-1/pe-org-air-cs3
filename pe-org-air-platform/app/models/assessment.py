@@ -32,6 +32,10 @@ class AssessmentResponse(AssessmentBase):
     id: UUID
     status: AssessmentStatus = AssessmentStatus.DRAFT
     v_r_score: Optional[float] = Field(None, ge=0, le=100)
+    h_r_score: Optional[float] = Field(None, ge=0, le=100)
+    synergy_score: Optional[float] = Field(None, ge=0, le=100)
+    org_air_score: Optional[float] = Field(None, ge=0, le=100)
+    confidence_score: Optional[float] = Field(None, ge=0, le=1)
     confidence_lower: Optional[float] = Field(None, ge=0, le=100)
     confidence_upper: Optional[float] = Field(None, ge=0, le=100)
     created_at: datetime

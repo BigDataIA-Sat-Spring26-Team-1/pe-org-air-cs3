@@ -31,6 +31,10 @@ CREATE TABLE IF NOT EXISTS assessments (
     primary_assessor VARCHAR(255),
     secondary_assessor VARCHAR(255),
     v_r_score DECIMAL(5, 2),
+    h_r_score DECIMAL(5, 2),
+    synergy_score DECIMAL(5, 2),
+    org_air_score DECIMAL(5, 2),
+    confidence_score DECIMAL(5, 2),
     confidence_lower DECIMAL(5, 2),
     confidence_upper DECIMAL(5, 2),
     created_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
@@ -48,3 +52,9 @@ CREATE TABLE IF NOT EXISTS dimension_scores (
     created_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
     UNIQUE (assessment_id, dimension)
 );
+
+-- Migrations for existing tables
+ALTER TABLE assessments ADD COLUMN IF NOT EXISTS h_r_score DECIMAL(5, 2);
+ALTER TABLE assessments ADD COLUMN IF NOT EXISTS synergy_score DECIMAL(5, 2);
+ALTER TABLE assessments ADD COLUMN IF NOT EXISTS org_air_score DECIMAL(5, 2);
+ALTER TABLE assessments ADD COLUMN IF NOT EXISTS confidence_score DECIMAL(5, 2);

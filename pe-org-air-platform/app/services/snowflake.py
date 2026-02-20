@@ -536,7 +536,9 @@ class SnowflakeService:
         params = [company_id]
         if category:
             query += " AND category = %s"
-            params.append(category)
+            # Ensure Enum is converted to string for Snowflake binding
+            cat_val = category.value if hasattr(category, 'value') else category
+            params.append(cat_val)
         query += " ORDER BY signal_date DESC LIMIT %s OFFSET %s"
         params.extend([limit, offset])
         return await self.fetch_all(query, tuple(params))
@@ -546,15 +548,17 @@ class SnowflakeService:
         params = [company_id]
         if category:
             query += " AND category = %s"
-            params.append(category)
+            # Ensure Enum is converted to string for Snowflake binding
+            cat_val = category.value if hasattr(category, 'value') else category
+            params.append(cat_val)
         query += " ORDER BY evidence_date DESC LIMIT %s OFFSET %s"
         params.extend([limit, offset])
         return await self.fetch_all(query, tuple(params))
 
-    async def fetch_job_descriptions_for_talent(self, company_id: str, limit: int = 500) -> List[str]:
-        """Fetch raw job descriptions specifically for talent concentration analysis."""
+    async def fetch_job_descriptions_for_talent(self, company_id: str, limit: int = 500) -> List[Dict[str, str]]:
+        """Fetch job titles and descriptions specifically for talent concentration analysis."""
         query = """
-            SELECT description 
+            SELECT title, description 
             FROM signal_evidence 
             WHERE company_id = %s 
             AND category = 'technology_hiring'
@@ -562,7 +566,7 @@ class SnowflakeService:
             LIMIT %s
         """
         rows = await self.fetch_all(query, (company_id, limit))
-        return [row['description'] for row in rows if row.get('description')]
+        return [{"title": row.get('title', ''), "description": row['description']} for row in rows]
 
     async def fetch_glassdoor_reviews_for_talent(self, company_id: str, limit: int = 1000) -> List[Dict[str, Any]]:
         """Fetch Glassdoor reviews (titles and text) for key-person risk analysis."""
@@ -642,6 +646,25 @@ class SnowflakeService:
         """
         params.extend([limit, offset])
         return await self.fetch_all(query, tuple(params))
+
+    async def fetch_sec_chunks_by_company(self, company_id: str, limit: int = 500) -> List[Dict[str, Any]]:
+        """Fetch chunks across all documents belonging to a company."""
+        # Join documents to companies to find all chunks for a specific company
+        query = """
+            SELECT dc.chunk_id, dc.section_name, dc.chunk_text, dc.chunk_index
+            FROM document_chunks dc
+            JOIN documents d ON dc.document_id = d.document_id
+            JOIN companies c ON (
+                UPPER(d.cik) = UPPER(c.cik) OR 
+                UPPER(d.cik) = UPPER(c.ticker) OR 
+                UPPER(d.company_name) = UPPER(c.name) OR 
+                UPPER(d.company_name) = UPPER(c.ticker)
+            )
+            WHERE c.id = %s
+            ORDER BY d.created_at DESC, dc.chunk_index ASC
+            LIMIT %s
+        """
+        return await self.fetch_all(query, (company_id, limit))
 
     # Analytical Metrics
     async def fetch_industry_distribution(self) -> List[Dict[str, Any]]:
@@ -729,6 +752,28 @@ class SnowflakeService:
         """
         return await self.fetch_all(query)
 
+    async def fetch_deep_assessments_leaderboard(self) -> List[Dict[str, Any]]:
+        """Fetch the latest high-fidelity integrated assessment for each company."""
+        query = """
+            WITH LatestAssessments AS (
+                SELECT 
+                    a.id, a.company_id, a.v_r_score, a.h_r_score, a.synergy_score, 
+                    a.org_air_score, a.confidence_score, a.assessment_date,
+                    ROW_NUMBER() OVER (PARTITION BY a.company_id ORDER BY a.assessment_date DESC, a.created_at DESC) as rn
+                FROM assessments a
+                WHERE a.assessment_type = 'INTEGRATED_CS3'
+            )
+            SELECT 
+                c.id as company_id, c.ticker, c.name as company_name,
+                la.v_r_score, la.h_r_score, la.synergy_score, la.org_air_score, la.confidence_score,
+                la.assessment_date
+            FROM companies c
+            JOIN LatestAssessments la ON c.id = la.company_id
+                AND la.rn = 1
+            ORDER BY la.org_air_score DESC
+        """
+        return await self.fetch_all(query)
+
     async def fetch_documents_distribution(self) -> List[Dict[str, Any]]:
         query = """
             SELECT 
@@ -794,5 +839,26 @@ class SnowflakeService:
             ORDER BY avg_composite DESC
         """
         return await self.fetch_all(query)
+
+    # Glassdoor & Culture
+    async def fetch_culture_scores(self, ticker: str, limit: int = 1) -> List[Dict[str, Any]]:
+        """Fetch latest culture scores for a company."""
+        query = """
+            SELECT * FROM culture_scores 
+            WHERE ticker = %s 
+            ORDER BY batch_date DESC 
+            LIMIT %s
+        """
+        return await self.fetch_all(query, (ticker, limit))
+
+    async def fetch_glassdoor_reviews(self, ticker: str, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+        """Fetch granular Glassdoor reviews for audit trails."""
+        query = """
+            SELECT * FROM glassdoor_reviews 
+            WHERE ticker = %s 
+            ORDER BY review_date DESC 
+            LIMIT %s OFFSET %s
+        """
+        return await self.fetch_all(query, (ticker, limit, offset))
 
 db = SnowflakeService()

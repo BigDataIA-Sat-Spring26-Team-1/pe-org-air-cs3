@@ -20,7 +20,8 @@ import {
     Plus,
     Trash2,
     AlertCircle,
-    Info
+    Info,
+    Users
 } from "lucide-react";
 
 interface ParamDef {
@@ -104,12 +105,39 @@ const CATEGORIES: any[] = [
         ]
     },
     {
+        name: "Culture & Glassdoor",
+        tag: "Culture",
+        icon: <Users size={16} />,
+        endpoints: [
+            { tag: "Culture", name: "Collect Glassdoor Reviews", method: 'POST', path: '/api/v1/signals/collect/glassdoor', description: "Trigger Glassdoor sentiment analysis", queryParams: [{ name: 'ticker', type: 'string', required: true }, { name: 'limit', type: 'number', required: false, default: 20 }] },
+            { tag: "Culture", name: "Get Culture Scores", method: 'GET', path: '/api/v1/signals/culture/{ticker}', description: "Retrieve aggregated sentiment metrics" },
+            { tag: "Culture", name: "Get Glassdoor Evidence", method: 'GET', path: '/api/v1/signals/culture/reviews/{ticker}', description: "View raw employee pros/cons", queryParams: [{ name: 'limit', type: 'number', required: false, default: 50 }, { name: 'offset', type: 'number', required: false, default: 0 }] },
+        ]
+    },
+    {
         name: "Evidence",
         tag: "Evidence",
         icon: <Shield size={16} />,
         endpoints: [
             { tag: "Evidence", name: "Run Backfill", method: 'POST', path: '/api/v1/evidence/backfill', description: "Force refresh evidence" },
             { tag: "Evidence", name: "Get Backfill Stats", method: 'GET', path: '/api/v1/evidence/stats', description: "Get backfill stats" },
+        ]
+    },
+    {
+        name: "Analytical Integration",
+        tag: "Integration",
+        icon: <Brain size={16} />,
+        endpoints: [
+            {
+                tag: "Integration",
+                name: "Run Integration Pipeline",
+                method: 'POST',
+                path: '/api/v1/integration/run',
+                description: "Force real-time deep scoring for one or more tickers (Board + SEC + Talent + Culture)",
+                body: {
+                    tickers: ["NVDA", "JPM", "GE"]
+                }
+            },
         ]
     },
     {
@@ -304,7 +332,18 @@ export default function Playground() {
 
             const res = await fetch(`${API_BASE}${finalPath}`, options);
             setStatus(res.status);
-            const data = await res.json();
+
+            let data;
+            if (res.status === 204) {
+                data = { message: "Company Deleted" };
+            } else {
+                const text = await res.text();
+                try {
+                    data = text ? JSON.parse(text) : { message: "Success" };
+                } catch (e) {
+                    data = { message: "Response received but could not be parsed as JSON", raw: text };
+                }
+            }
             setResponse(data);
         } catch (err) {
             setResponse({ error: "Request failed", details: String(err) });

@@ -9,6 +9,14 @@ class SignalCategory(str, Enum):
     INNOVATION_ACTIVITY = "innovation_activity"
     DIGITAL_PRESENCE = "digital_presence"
     LEADERSHIP_SIGNALS = "leadership_signals"
+    # SEC Items
+    SEC_ITEM_1 = "sec_item_1"
+    SEC_ITEM_1A = "sec_item_1a"
+    SEC_ITEM_7 = "sec_item_7"
+    # New Sources
+    GLASSDOOR_REVIEWS = "glassdoor_reviews"
+    BOARD_COMPOSITION = "board_composition"
+    TALENT_CONCENTRATION = "talent_concentration"
 
 class SignalCollectionRequest(BaseModel):
     ticker: Optional[str] = Field(None, description="Company ticker symbol")

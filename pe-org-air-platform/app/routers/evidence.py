@@ -91,5 +91,7 @@ async def get_evidence_stats():
         stats["companies"] = len(company_metrics)
         stats["signals"] = sum(c['signals'] for c in company_metrics)
         stats["documents"] = sum(c['filings'] for c in company_metrics)
+        # Fetch culture signal count if method exists, or just rely on backfill_service stats
+        # For now, let's just ensure culture_data is present in the returned stats
     
     return stats

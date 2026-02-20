@@ -10,8 +10,61 @@ from datetime import datetime, timedelta
 import hashlib
 import json
 
+from app.pipelines.glassdoor.glassdoor_orchestrator import GlassdoorOrchestrator
+from app.pipelines.glassdoor.glassdoor_collector import COMPANY_IDS
+
 router = APIRouter()
 logger = logging.getLogger("app")
+
+# Background worker for Glassdoor
+async def run_glassdoor_pipeline(ticker: str, limit: int):
+    try:
+        orch = GlassdoorOrchestrator()
+        await orch.run_pipeline(ticker=ticker, limit=limit)
+        logger.info(f"Glassdoor pipeline completed for {ticker}")
+    except Exception as e:
+        logger.error(f"Glassdoor pipeline failed for {ticker}: {e}")
+
+@router.post("/collect/glassdoor", status_code=202)
+async def collect_glassdoor_reviews(
+    ticker: str, 
+    background_tasks: BackgroundTasks,
+    limit: int = Query(20, ge=1, le=100)
+):
+    """Trigger Glassdoor review collection in the background."""
+    # Check if we have an ID for this ticker
+    gid = COMPANY_IDS.get(ticker.upper())
+    if not gid:
+        raise HTTPException(status_code=400, detail=f"No Glassdoor ID mapped for ticker {ticker}. Manual mapping required.")
+
+    background_tasks.add_task(run_glassdoor_pipeline, ticker.upper(), limit)
+    return {"message": f"Glassdoor collection queued for {ticker}", "status": "queued"}
+
+@router.get("/culture/{ticker}")
+async def get_culture_scores(ticker: str):
+    """Retrieve latest culture scores for a company."""
+    scores = await db.fetch_culture_scores(ticker.upper())
+    if not scores:
+        return {"message": "No culture scores found for this ticker."}
+    
+    # Culture scores contains lists of keywords as VARIANT, sometimes need parsing if returned as JSON strings
+    s = scores[0]
+    if isinstance(s.get('positive_keywords_found'), str):
+        s['positive_keywords_found'] = json.loads(s['positive_keywords_found'])
+    if isinstance(s.get('negative_keywords_found'), str):
+        s['negative_keywords_found'] = json.loads(s['negative_keywords_found'])
+        
+    return s
+
+@router.get("/culture/reviews/{ticker}")
+async def get_glassdoor_reviews(
+    ticker: str,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0)
+):
+    """Retrieve granular Glassdoor reviews for a company."""
+    reviews = await db.fetch_glassdoor_reviews(ticker.upper(), limit, offset)
+    return reviews
 
 # Active collection tasks
 active_tasks = set()
@@ -280,9 +333,20 @@ async def get_signals_by_category(
     if signals:
         signal_models = []
         for s in signals:
-            if hasattr(s.get('signal_date'), 'isoformat'):
-                s['signal_date'] = s['signal_date'].isoformat()
-            signal_models.append(ExternalSignal(**s))
+            try:
+                # Handle Snowflake Date objects
+                if hasattr(s.get('signal_date'), 'isoformat'):
+                    s['signal_date'] = s['signal_date'].isoformat()
+                
+                # Parse JSON strings if needed
+                if isinstance(s.get('metadata'), str):
+                    s['metadata'] = json.loads(s['metadata'])
+                    
+                signal_models.append(ExternalSignal(**s))
+            except Exception as err:
+                logger.warning(f"Failed to parse signal in category {category}: {err}")
+                continue
+        
         cache.set_list(cache_key, signal_models, 86400)
         return signal_models
         

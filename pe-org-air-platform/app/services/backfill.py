@@ -7,6 +7,8 @@ from typing import Dict, Any, List
 
 from app.pipelines.external_signals.orchestrator import MasterPipeline
 from app.pipelines.sec.pipeline import SecPipeline
+from app.pipelines.glassdoor.glassdoor_orchestrator import GlassdoorOrchestrator
+from app.pipelines.glassdoor.glassdoor_collector import COMPANY_IDS
 from app.services.snowflake import db
 from app.services.redis_cache import cache
 
@@ -31,6 +33,7 @@ class BackfillService:
             "companies": 0,
             "documents": 0,
             "signals": 0,
+            "culture_data": 0,
             "errors": 0,
             "status": "idle",
             "last_run": None,
@@ -59,6 +62,7 @@ class BackfillService:
         self._stats["companies"] = 0
         self._stats["signals"] = 0
         self._stats["documents"] = 0
+        self._stats["culture_data"] = 0
         self._stats["errors"] = 0
         self._stats["duration_seconds"] = 0
         self._stats["last_run"] = datetime.utcnow().isoformat()
@@ -68,6 +72,7 @@ class BackfillService:
         
         sec_pipeline = SecPipeline()
         signal_pipeline = MasterPipeline()
+        glassdoor_orch = GlassdoorOrchestrator()
         
         # Pre-fetch industry map
         industry_map = {}
@@ -79,11 +84,10 @@ class BackfillService:
         tickers = list(targets_dict.keys())
         
         # Concurrency control: Max 2 companies at a time using Semaphore
-        # This replaces the batch approach to avoid blocking on slow jobs
         semaphore = asyncio.Semaphore(2)
 
         async def _process_company_full(ticker: str):
-            """Worker to run SEC + Signals for one company in parallel."""
+            """Worker to run SEC + Signals + Culture for one company in parallel."""
             info = targets_dict[ticker]
             
             # 1. Resolve Industry ID & Ensure Company Record
@@ -141,9 +145,19 @@ class BackfillService:
                 logger.info(f"==> FINISHED Signals for {ticker}: {len(signals_to_save)} added")
                 return res
 
-            # 3. Trigger both and wait for completion
-            logger.info(f"==> STARTING Pipelines for {ticker} (SEC + Signals)")
-            await asyncio.gather(_run_sec(), _run_signals())
+            async def _run_culture():
+                # Only run if we have a Glassdoor ID mapping
+                if ticker in COMPANY_IDS:
+                    logger.info(f"==> STARTING Glassdoor for {ticker}...")
+                    res = await glassdoor_orch.run_pipeline(ticker, limit=20)
+                    self._stats["culture_data"] += res.get("signals", 0)
+                    logger.info(f"==> FINISHED Glassdoor for {ticker}: {res.get('reviews')} reviews collected")
+                    return res
+                return {"reviews": 0, "signals": 0}
+
+            # 3. Trigger all and wait for completion
+            logger.info(f"==> STARTING Pipelines for {ticker} (SEC + Signals + Culture)")
+            await asyncio.gather(_run_sec(), _run_signals(), _run_culture())
             
             # 4. Finalize Company Stats
             self._stats["companies"] += 1

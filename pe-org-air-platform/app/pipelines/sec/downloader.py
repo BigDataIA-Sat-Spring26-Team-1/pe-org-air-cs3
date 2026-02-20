@@ -96,6 +96,7 @@ class SecDownloader:
                         # The sec-edgar-downloader might name the folder by ticker or CIK
                         # We want the official CIK if we can get it
                         meta = FilingMetadata(
+                            ticker=ticker,
                             cik=ticker, 
                             company_name=ticker, 
                             filing_type=filing_type,

@@ -54,11 +54,24 @@ interface SectorItem {
     companies_count: number;
 }
 
+interface DeepAssessmentItem {
+    company_id: string;
+    ticker: string;
+    company_name: string;
+    v_r_score: number;
+    h_r_score: number;
+    synergy_score: number;
+    org_air_score: number;
+    confidence_score: number;
+    assessment_date: string;
+}
+
 interface ReadinessReport {
     leaderboard: LeaderboardItem[];
     documents: DocItem[];
     chunks: ChunkItem[];
     sectors: SectorItem[];
+    deep_assessments: DeepAssessmentItem[];
 }
 
 export default function ReadinessPage() {
@@ -212,6 +225,76 @@ export default function ReadinessPage() {
                     </div>
                 </div>
             </section>
+
+            {/* Deep Intelligence Assessments Section */}
+            {report?.deep_assessments && report.deep_assessments.length > 0 && (
+                <section className="relative z-10 space-y-8">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-3xl font-black text-white tracking-tight flex items-center gap-4">
+                            <ShieldCheck size={32} className="text-indigo-500" />
+                            Deep Intelligence Assessments
+                        </h2>
+                        <div className="px-4 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-[10px] font-black tracking-widest uppercase text-indigo-400">
+                            High Fidelity Audit (INTEGRATED_CS3)
+                        </div>
+                    </div>
+
+                    <div className="bg-[#0c0c0e]/50 border border-white/5 rounded-[2.5rem] overflow-hidden shadow-2xl backdrop-blur-xl">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="bg-white/[0.02] border-b border-white/5">
+                                        <th className="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-500">Company</th>
+                                        <th className="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-500">V-R (Readiness)</th>
+                                        <th className="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-500">H-R (Context)</th>
+                                        <th className="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-500">Synergy</th>
+                                        <th className="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-white">Org-AIR Score</th>
+                                        <th className="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-500">Confidence</th>
+                                        <th className="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-500 text-right">Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/[0.03]">
+                                    {report.deep_assessments.map((item) => (
+                                        <tr key={item.company_id} className="hover:bg-white/[0.02] transition-colors group">
+                                            <td className="px-8 py-6">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="px-2 py-1 bg-indigo-600/10 border border-indigo-500/20 rounded text-[10px] font-black text-indigo-400 min-w-[40px] text-center">
+                                                        {item.ticker}
+                                                    </div>
+                                                    <span className="font-bold text-slate-200 group-hover:text-indigo-400 transition-colors uppercase tracking-tight">{item.company_name}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-8 py-6">
+                                                <ScoreDisplay value={item.v_r_score} />
+                                            </td>
+                                            <td className="px-8 py-6">
+                                                <ScoreDisplay value={item.h_r_score} />
+                                            </td>
+                                            <td className="px-8 py-6">
+                                                <ScoreDisplay value={item.synergy_score} />
+                                            </td>
+                                            <td className="px-8 py-6">
+                                                <span className="text-2xl font-black text-white tracking-widest bg-gradient-to-r from-indigo-400 to-blue-400 bg-clip-text text-transparent">
+                                                    {(item.org_air_score || 0).toFixed(1)}
+                                                </span>
+                                            </td>
+                                            <td className="px-8 py-6">
+                                                <div className="flex items-center gap-2">
+                                                    <Zap size={14} className={item.confidence_score > 0.8 ? "text-amber-500" : "text-slate-600"} />
+                                                    <span className="text-xs font-bold text-slate-400">{((item.confidence_score || 0) * 100).toFixed(0)}%</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-8 py-6 text-right">
+                                                <span className="text-[10px] font-black text-slate-500 uppercase">{new Date(item.assessment_date).toLocaleDateString()}</span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+            )}
 
             {/* Docs & Chunks Split */}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-12 relative z-10">
