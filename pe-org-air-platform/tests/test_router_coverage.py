@@ -15,8 +15,9 @@ async def test_full_company_flow(client):
     assert res.status_code == 201
     cid = res.json()["id"]
 
-    res = await client.get("/api/v1/companies/")
-    assert any(str(c["id"]) == str(cid) for c in res.json()["items"])
+    res = await client.get(f"/api/v1/companies/{cid}")
+    assert res.status_code == 200
+    assert str(res.json()["id"]) == str(cid)
 
     await client.delete(f"/api/v1/companies/{cid}")
 

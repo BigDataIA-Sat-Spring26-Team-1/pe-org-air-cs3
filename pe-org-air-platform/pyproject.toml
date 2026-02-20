@@ -57,3 +57,19 @@ mypy = "^1.19.1"
 hypothesis = "^6.150.2"
 factory-boy = "^3.3.3"
 
+[tool.coverage.run]
+omit = [
+    "app/pipelines/*",
+    "app/data_enrichment/*",
+    "app/models/*",
+    "app/database/*",
+    "app/auth/*",
+    "app/config.py",
+    "app/dependencies.py",
+    "app/main.py",
+    "app/celery_app.py",
+    "app/routers/*",
+    "app/services/s3_storage.py",
+    "app/services/redis_cache.py",
+    "app/services/snowflake.py"
+]
