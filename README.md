@@ -5,10 +5,11 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-05998b?style=for-the-badge&logo=fastapi)
 ![Snowflake](https://img.shields.io/badge/Snowflake-Data_Cloud-29B5E8?style=for-the-badge&logo=snowflake)
 ![Redis](https://img.shields.io/badge/Redis-Caching-DC382D?style=for-the-badge&logo=redis)
+![Airflow](https://img.shields.io/badge/Airflow-Orchestration-017CEE?style=for-the-badge&logo=apacheairflow)
 ![Playwright](https://img.shields.io/badge/Playwright-Automation-2EAD33?style=for-the-badge&logo=playwright)
 ![Docker](https://img.shields.io/badge/Docker-Orchestration-2496ED?style=for-the-badge&logo=docker)
 
-The **PE Org-AI-R Platform** is a sophisticated data orchestration and analytics platform engineered to help Private Equity firms assess the technological maturity and AI readiness of target portfolio companies. The system automates the capture of high-fidelity signals from SEC filings, global patent registries, and technology job markets.
+The **PE Org-AI-R Platform** is a sophisticated data orchestration and analytics platform engineered to help Private Equity firms assess the technological maturity and AI readiness of target portfolio companies. The system automates the capture of high-fidelity signals from SEC filings, global patent registries, technology job markets, and **Glassdoor employee reviews** to compute a multi-dimensional AI-readiness score.
 
 ---
 
@@ -19,7 +20,8 @@ The **PE Org-AI-R Platform** is a sophisticated data orchestration and analytics
 | **Frontend** | ![Next.js](https://img.shields.io/badge/Next.js-000?style=flat&logo=next.js&logoColor=white) **Next.js 15 (App Router)**, **TypeScript**, **Tailwind CSS**, **Lucide React** |
 | **Backend** | ![FastAPI](https://img.shields.io/badge/FastAPI-05998b?style=flat&logo=fastapi&logoColor=white) **FastAPI**, **Pydantic V2**, **Structured Logging (structlog)**, **Tenacity (Retry Logic)** |
 | **Data & Cache** | ![Snowflake](https://img.shields.io/badge/Snowflake-29B5E8?style=flat&logo=snowflake&logoColor=white) **Snowflake (SQL Alchemy + Snowflake-connector)**, ![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat&logo=redis&logoColor=white) **Redis (aioredis)** |
-| **Pipelines** | ![Playwright](https://img.shields.io/badge/Playwright-2EAD33?style=flat&logo=playwright&logoColor=white) **Playwright (Stealth Mode)**, **JobSpy (LinkedIn Scraper)**, **Boto3 (AWS S3)** |
+| **Orchestration** | ![Airflow](https://img.shields.io/badge/Airflow-017CEE?style=flat&logo=apacheairflow&logoColor=white) **Apache Airflow 2.x** (TaskFlow API, Dynamic Task Mapping) |
+| **Pipelines** | ![Playwright](https://img.shields.io/badge/Playwright-2EAD33?style=flat&logo=playwright&logoColor=white) **Playwright (Stealth Mode)**, **JobSpy (LinkedIn Scraper)**, **Wextractor (Glassdoor API)**, **Boto3 (AWS S3)** |
 | **Testing** | ![Pytest](https://img.shields.io/badge/Pytest-0A9EDC?style=flat&logo=pytest&logoColor=white) **Pytest**, **Asyncio In-Memory Testing** |
 
 ---
@@ -36,80 +38,115 @@ The **PE Org-AI-R Platform** is a sophisticated data orchestration and analytics
 ## 📂 Project Structure
 ```text
 .
-  |docker
-  |--|Dockerfile
-  |--|docker-compose.yml
-  |app
-  |--|routers
-  |--|--|metrics.py
-  |--|--|signals.py
-  |--|--|routers_utils.py
-  |--|--|config.py
-  |--|--|health.py
-  |--|--|__init__.py
-  |--|--|sec.py
-  |--|--|companies.py
-  |--|--|testing.py
-  |--|--|assessments.py
-  |--|--|evidence.py
-  |--|--|industries.py
-  |--|database
-  |--|--|seed.sql
-  |--|--|schema.sql
-  |--|--|schema_sec.sql
-  |--|--|__init__.py
-  |--|--|schema_signal.sql
-  |--|config.py
-  |--|__init__.py
-  |--|pipelines
-  |--|--|sec
-  |--|--|external_signals
-  |--|logging_conf.py
-  |--|models
-  |--|--|assessment.py
-  |--|--|signals.py
-  |--|--|enums.py
-  |--|--|company.py
-  |--|--|registry.py
-  |--|--|__init__.py
-  |--|--|common.py
-  |--|--|sec.py
-  |--|--|industry.py
-  |--|--|dimension.py
-  |--|main.py
-  |--|services
-  |--|--|__init__.py
-  |--|--|backfill.py
-  |--|--|snowflake.py
-  |--|--|s3_storage.py
-  |--|--|redis_cache.py
-  |pytest.ini
-  |frontend
-  |--|postcss.config.mjs
-  |--|Dockerfile
-  |--|README.md
-  |--|public
-  |--|package.json
-  |--|tsconfig.json
-  |--|next.config.ts
-  |--|src
-  |--|--|app
-  |requirements.txt
-  |pyproject.toml
-  |tests
-  |--|test_concurrency.py
-  |--|conftest.py
-  |--|test_performance_cache.py
-  |--|test_flows.py
-  |--|test_sec_downloader.py
-  |--|test_models.py
-  |--|test_api.py
-  |README.md
-  |logs
-  |--|app.log
-  |data
-  |--|sec_downloads
-  |--|README.md
+├── pe-org-air-platform/                     # Main application monorepo
+│   ├── app/                                  # FastAPI backend application
+│   │   ├── main.py                           # Application entry point
+│   │   ├── config.py                         # Settings & environment config
+│   │   ├── logging_conf.py                   # Structured logging setup
+│   │   ├── routers/                          # API route handlers
+│   │   │   ├── assessments.py                #   Assessment CRUD & lifecycle
+│   │   │   ├── companies.py                  #   Company management endpoints
+│   │   │   ├── signals.py                    #   Signal collection triggers
+│   │   │   ├── sec.py                        #   SEC filing queries
+│   │   │   ├── metrics.py                    #   Scoring & analytics
+│   │   │   ├── evidence.py                   #   Evidence retrieval
+│   │   │   ├── industries.py                 #   Industry lookup
+│   │   │   ├── integration.py                #   Integration pipeline trigger
+│   │   │   ├── health.py                     #   Health check & readiness
+│   │   │   ├── testing.py                    #   Test/debug endpoints
+│   │   │   └── config.py                     #   Runtime config endpoints
+│   │   ├── models/                           # Pydantic V2 data models
+│   │   │   ├── company.py                    #   Company schema
+│   │   │   ├── assessment.py                 #   Assessment schema
+│   │   │   ├── signals.py                    #   Signal schema
+│   │   │   ├── sec.py                        #   SEC document schema
+│   │   │   ├── scoring.py                    #   Scoring result models
+│   │   │   ├── glassdoor_models.py           #   Glassdoor review models
+│   │   │   ├── board.py                      #   Board composition models
+│   │   │   ├── dimension.py                  #   Scoring dimension schema
+│   │   │   ├── industry.py                   #   Industry taxonomy
+│   │   │   ├── registry.py                   #   Model registry
+│   │   │   ├── enums.py                      #   Shared enumerations
+│   │   │   └── common.py                     #   Common base models
+│   │   ├── scoring/                          # AI Readiness Scoring Engine
+│   │   │   ├── rubric_scorer.py              #   Rubric-based scoring logic
+│   │   │   ├── calculators.py                #   VR, HR, Synergy, Confidence, OrgAIR calculators
+│   │   │   ├── evidence_mapper.py            #   Signal → Dimension evidence mapping
+│   │   │   ├── talent_analyzer.py            #   Talent concentration analysis
+│   │   │   ├── position_factor.py            #   Position-factor calculator
+│   │   │   └── utils.py                      #   Scoring utility functions
+│   │   ├── pipelines/                        # Data collection pipelines
+│   │   │   ├── integration_pipeline.py       #   Master integration orchestrator
+│   │   │   ├── board_analyzer.py             #   Board composition analyzer
+│   │   │   ├── sec/                          #   SEC EDGAR pipeline
+│   │   │   │   ├── pipeline.py               #     Full SEC orchestrator
+│   │   │   │   ├── downloader.py             #     EDGAR filing downloader
+│   │   │   │   ├── parser.py                 #     10-K/10-Q text parser
+│   │   │   │   ├── chunker.py                #     Document chunking
+│   │   │   │   └── components.py             #     Airflow-compatible components
+│   │   │   ├── glassdoor/                    #   Glassdoor culture pipeline
+│   │   │   │   ├── glassdoor_collector.py     #     Review fetcher & rubric scorer
+│   │   │   │   ├── glassdoor_orchestrator.py  #     Batch orchestration & persistence
+│   │   │   │   └── glassdoor_queries.py       #     Snowflake query templates
+│   │   │   └── external_signals/             #   External signal collectors
+│   │   │       ├── orchestrator.py            #     Signal collection orchestrator
+│   │   │       ├── job_collector.py           #     AI job-market scraper (JobSpy)
+│   │   │       ├── patent_collector.py        #     PatentsView API collector
+│   │   │       ├── tech_stack_collector.py    #     BuiltWith / Playwright scanner
+│   │   │       ├── leadership_collector.py    #     C-suite AI leadership signals
+│   │   │       └── utils.py                   #     Shared pipeline utilities
+│   │   ├── services/                         # Shared infrastructure services
+│   │   │   ├── snowflake.py                  #   Snowflake singleton manager
+│   │   │   ├── redis_cache.py                #   Redis caching layer
+│   │   │   ├── s3_storage.py                 #   AWS S3 storage client
+│   │   │   ├── backfill.py                   #   Data backfill service
+│   │   │   └── sector_config.py              #   Sector/industry configuration
+│   │   └── database/                         # SQL schema definitions
+│   │       ├── schema.sql                    #   Core tables (companies, assessments)
+│   │       ├── schema_sec.sql                #   SEC documents & chunks
+│   │       ├── schema_signal.sql             #   Signal storage tables
+│   │       ├── schema_culture.sql            #   Glassdoor culture scores
+│   │       └── seed.sql                      #   Initial seed data
+│   ├── dags/                                 # Airflow DAG definitions
+│   │   ├── integration_pipeline_dag.py       #   Full scoring pipeline (daily)
+│   │   ├── sec_ingestion_dag.py              #   SEC filing ingestion (daily)
+│   │   ├── sec_backfill_dag.py               #   SEC backfill (manual trigger)
+│   │   └── sec_monitor_dag.py                #   SEC data quality audit (weekly)
+│   ├── docker/                               # Docker & Airflow infrastructure
+│   │   ├── Dockerfile                        #   Multi-service Docker image
+│   │   ├── docker-compose.yml                #   Full stack orchestration
+│   │   ├── dags/                             #   Airflow DAG mount point
+│   │   ├── logs/                             #   Airflow log volume
+│   │   └── plugins/                          #   Airflow plugins mount
+│   ├── frontend/                             # Next.js 15 frontend
+│   │   ├── src/app/                          #   App Router pages & components
+│   │   ├── public/                           #   Static assets
+│   │   ├── Dockerfile                        #   Frontend container config
+│   │   └── package.json                      #   Node.js dependencies
+│   ├── tests/                                # Test suite
+│   │   ├── test_api.py                       #   REST endpoint tests
+│   │   ├── test_flows.py                     #   End-to-end business logic
+│   │   ├── test_concurrency.py               #   Parallel execution stress tests
+│   │   ├── test_performance_cache.py         #   Redis performance benchmarks
+│   │   ├── test_sec_downloader.py            #   SEC integration mocks
+│   │   ├── test_models.py                    #   Pydantic model validation
+│   │   ├── test_scoring_properties.py        #   Scoring engine property tests
+│   │   └── conftest.py                       #   Shared test fixtures
+│   ├── requirements.txt                      # Python dependencies
+│   ├── pyproject.toml                        # Project metadata & build config
+│   └── pytest.ini                            # Pytest configuration
+├── Prototyping/                              # Research & prototyping notebooks
+│   ├── Glassdoor review analysis/            #   Glassdoor review analysis POC
+│   ├── SEC-Edgar/                            #   SEC EDGAR exploration
+│   ├── Signals/                              #   Signal pipeline prototypes
+│   ├── TalentAnalyzerPOC/                    #   Talent scoring proof-of-concept
+│   ├── scoring_poc/                          #   Scoring engine POC
+│   ├── glassdoor_pipeline_validation/        #   Glassdoor pipeline tests
+│   ├── airflow_implementation_validation/    #   Airflow DAG validation tests
+│   ├── Integration_testing/                  #   Integration pipeline tests
+│   ├── hiring_debug/                         #   Hiring signal debugging
+│   └── leadership_debug/                     #   Leadership signal debugging
+└── README.md                                 # This file
 ```
 
 ---
@@ -121,6 +158,7 @@ The **PE Org-AI-R Platform** is a sophisticated data orchestration and analytics
 *   **Snowflake Account** (With `ACCOUNTADMIN` or equivalent to create tables)
 *   **AWS S3 Bucket** (Optional: for unstructured filing storage)
 *   **PatentsView API Key** (Optional: for innovation activity signals)
+*   **Wextractor API Key** (Optional: for Glassdoor review collection)
 
 ### 2. Environment Setup
 Configure your `.env` file in the root directory:
@@ -142,15 +180,16 @@ AWS_ACCESS_KEY_ID="your-key"
 AWS_SECRET_ACCESS_KEY="your-secret"
 S3_BUCKET="pe-intelligence-parsed"
 PATENTSVIEW_API_KEY="your-patentsview-key"
+WEXTRACTOR_API_KEY="your-wextractor-key"
 ```
 
 ### 3. Build and Launch
 ```bash
 docker compose --env-file .env -f docker/docker-compose.yml up --build
 ```
-```
 *   **Frontend Hub**: `http://localhost:3000`
 *   **API Backbone**: `http://localhost:8000`
+*   **Airflow UI**: `http://localhost:8080`
 *   **Interactive Tutorial**: `http://localhost:3000/tutorial`
 
 ### 4. Stopping and Cleanup
@@ -164,7 +203,7 @@ docker compose --env-file .env -f docker/docker-compose.yml down --rmi all
 
 **Complete cleanup (includes volumes):**
 ```bash
-# ⚠️ WARNING: This removes Redis data and all volumes
+# ⚠️ WARNING: This removes Redis data, Airflow metadata, and all volumes
 docker compose --env-file .env -f docker/docker-compose.yml down --rmi all --volumes
 ```
 
@@ -186,17 +225,85 @@ du -sh data/ logs/
 
 ---
 
+## 🔄 Airflow Pipeline Orchestration
+
+The platform uses **Apache Airflow 2.x** with the **TaskFlow API** and **Dynamic Task Mapping** to orchestrate all data collection and scoring pipelines. Airflow runs as part of the Docker Compose stack alongside the API and frontend.
+
+### DAG Overview
+
+| DAG ID | Schedule | Description |
+| :--- | :--- | :--- |
+| `integration_pipeline` | `@daily` | **Core scoring pipeline** — fetches active tickers, then for each company runs parallel analysis tasks (SEC rubric, Board composition, Talent signals, Culture/Glassdoor) and computes the final OrgAIR score. |
+| `sec_filing_ingestion` | `@daily` | **SEC ingestion** — downloads latest 10-K/10-Q filings per ticker from EDGAR, parses and chunks documents, stores in S3 + Snowflake. |
+| `sec_backfill` | Manual | **SEC backfill** — manually triggered to backfill historical filings for specified tickers with configurable filing types and limits. |
+| `sec_quality_monitor` | `@weekly` | **Data quality audit** — validates Snowflake document/chunk counts, checks S3 consistency, and flags zero-chunk documents (parsing failures). |
+
+### Integration Pipeline Workflow
+```
+fetch_tickers ──► [Per Company (Dynamic Map)] ──►
+                   ├── init_assessment
+                   ├── analyze_sec       ─┐
+                   ├── analyze_board      ├──► finalize_score
+                   ├── analyze_talent     │
+                   └── analyze_culture   ─┘
+```
+
+Each analysis stage runs in **parallel** within a mapped `task_group`. The `finalize_score` task uses `TriggerRule.ALL_DONE` to gracefully handle partial failures and still compute a score from available dimensions.
+
+### SEC Ingestion Workflow
+```
+get_tickers ──► download_filings (mapped) ──► discover_filings ──► process_filing (mapped) ──► save_to_snowflake (mapped) ──► cleanup
+```
+
+Filings are downloaded, parsed into structured chunks, and persisted to Snowflake. Heavy XCom payloads are written to a shared volume instead of the Airflow metadata DB for efficiency.
+
+---
+
+## 🏢 Glassdoor Culture Scoring
+
+The platform incorporates **Glassdoor employee reviews** as a cultural signal dimension for AI-readiness assessment. Reviews are collected via the **Wextractor API**, scored using a **keyword-based rubric**, and aggregated with **recency and employment-status weighting**.
+
+### Review Collection
+*   Reviews are fetched from Glassdoor for target companies (e.g., NVDA, JPM, WMT, GE, DG) using the Wextractor API.
+*   Raw review JSON is **cached in S3** to avoid redundant API calls during re-runs.
+*   Parsed review objects include: rating, title, pros/cons text, review date, and employment status.
+
+### Rubric-Based Scoring
+The `RubricScorer` evaluates reviews across **three culture dimensions**, each scored 1–5:
+
+| Dimension | What It Measures | Example Positive Keywords | Example Negative Keywords |
+| :--- | :--- | :--- | :--- |
+| **Innovation** | Creativity & forward-thinking culture | *"cutting-edge"*, *"encourages new ideas"*, *"creative freedom"* | *"resistant to change"*, *"outdated tools"*, *"bureaucratic"* |
+| **Leadership** | Quality of management vision & support | *"empowering leadership"*, *"clear vision"*, *"mentorship"* | *"micromanagement"*, *"poor communication"*, *"no direction"* |
+| **Adaptability** | Organizational agility & responsiveness | *"fast-paced"*, *"embraces change"*, *"agile processes"* | *"slow decision-making"*, *"rigid structure"*, *"stagnant"* |
+
+### Weighted Aggregation
+Scores are **not simple averages** — each review is weighted by two factors:
+1.  **Recency Weight**: More recent reviews are weighted higher to reflect current company culture.
+2.  **Employment Status**: Reviews from current employees carry different weight than former employees.
+
+The final per-dimension score is computed as a **weighted average**, and keyword evidence is extracted and stored alongside scores for audit transparency.
+
+### Data Storage
+*   Scores are persisted to Snowflake using the `schema_culture.sql` schema.
+*   The `glassdoor_queries.py` module contains `MERGE INTO` statements to handle upserts and prevent duplication.
+*   Evidence keywords and review metadata are stored for downstream explainability in the frontend dashboards.
+
+---
+
 ## ⚙️ Data Pipelines & Orchestration Logic
 
 The system utilizes a multi-stage, asynchronous pipeline architecture designed for resilience and rate-limit compliance.
 
 ### **Pipeline Execution Flow**
-The `MasterPipeline` orchestrates collection in a specific order to optimize data dependency:
+The `IntegrationPipeline` orchestrates collection in a specific order to optimize data dependency:
 1.  **Job Market Analysis**: First pass using **JobSpy** to identify AI hiring signals. This data is cached and used to resolve technical domains in step 2.
 2.  **Concurrent Collection**:
     *   **Innovation Sweep**: Parallel fetch from **PatentsView API**.
     *   **Digital Presence**: Concurrent scan of `BuiltWith` and direct site signatures using **Playwright**.
     *   **Leadership Signals**: Scanning for C-suite AI focus.
+3.  **Culture Analysis**: **Glassdoor reviews** are fetched, scored via the rubric engine, and persisted with weighted aggregation.
+4.  **Scoring Finalization**: All dimension signals are fed into the **OrgAIR Scoring Engine** (VR, HR, Synergy, Confidence calculators) to produce the final composite score.
 
 ### **Robustness & Anti-Blocking Strategies**
 To ensure uninterrupted operation and avoid IP/Rate-limit blocking, we implemented:
@@ -222,6 +329,9 @@ Implemented a thread-safe **Snowflake Singleton** manager with a persistent sess
 ### **Graceful Degradation**
 Integrations like S3 and PatentsView are designed to fail gracefully. If credentials are missing, the system warns the operator via structured logs but continues to serve existing data and other active collectors.
 
+### **Airflow-Native Task Design**
+Each pipeline step is wrapped as an Airflow `@task` with `asyncio.run()` bridging, allowing reuse of the existing async codebase. Dynamic Task Mapping (`expand()`) enables per-ticker parallelism without manual DAG construction.
+
 ---
 
 ## 🧪 Quality & Verification
@@ -239,14 +349,15 @@ docker compose --env-file .env -f docker/docker-compose.yml exec api pytest -v -
 | Module | Focus Area |
 | :--- | :--- |
 | **API Integrity** (`test_api.py`) | Validates all REST endpoints, status codes, and payload validation. |
-| **Business Logic** (`test_flows.py`) | End-to-end verification of the Assessment -> Signal -> Score lifecycle. |
+| **Business Logic** (`test_flows.py`) | End-to-end verification of the Assessment → Signal → Score lifecycle. |
 | **Concurrency** (`test_concurrency.py`) | Stress tests the system's ability to handle parallel scraping tasks and SEM throttling. |
 | **Performance** (`test_performance_cache.py`) | Measures Redis hit rates and latency improvements for cached metrics. |
 | **External Systems** (`test_sec_downloader.py`) | Mocks SEC/PatentsView interactions to ensure resilient parsing logic. |
 | **Schema Integrity** (`test_models.py`) | Deep validation of Pydantic V2 models and data transformation rules. |
+| **Scoring Properties** (`test_scoring_properties.py`) | Property-based tests for the scoring engine calculators (VR, HR, Synergy, Confidence). |
 
 ### Continuous Validation
-The test suite is designed to be run as part of a CI/CD pipeline, ensuring that changes to the `MasterPipeline` do not regress scoring accuracy or rate-limit compliance.
+The test suite is designed to be run as part of a CI/CD pipeline, ensuring that changes to the `IntegrationPipeline` do not regress scoring accuracy or rate-limit compliance.
 
 ---
 
@@ -254,6 +365,7 @@ The test suite is designed to be run as part of a CI/CD pipeline, ensuring that 
 
 1.  **Snowflake Constraints**: Unique constraints are metadata-only in Snowflake; duplication is prevented via `MERGE INTO` logic in our DAO layer.
 2.  **BuiltWith Rendering**: Certain high-security sites may occasionally block the Playwright scan; the system falls back to job description keyword analysis in these scenarios.
+3.  **Glassdoor API Quotas**: The Wextractor API has rate limits; reviews are cached in S3 to minimize redundant calls during pipeline re-runs.
 
 ---
 
