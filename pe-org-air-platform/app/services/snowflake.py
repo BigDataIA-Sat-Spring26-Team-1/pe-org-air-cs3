@@ -574,12 +574,12 @@ class SnowflakeService:
         return [{"title": row.get('title', ''), "description": row['description']} for row in rows]
 
     async def fetch_glassdoor_reviews_for_talent(self, company_id: str, limit: int = 1000) -> List[Dict[str, Any]]:
-        """Fetch Glassdoor reviews (titles and text) for key-person risk analysis."""
+        """Fetch Glassdoor reviews for culture/talent analysis."""
         query = """
-            SELECT title, description as review_text, metadata
-            FROM signal_evidence 
+            SELECT title, pros as review_text, NULL as metadata
+            FROM glassdoor_reviews 
             WHERE company_id = %s 
-            AND source = 'glassdoor'
+            ORDER BY review_date DESC
             LIMIT %s
         """
         return await self.fetch_all(query, (company_id, limit))

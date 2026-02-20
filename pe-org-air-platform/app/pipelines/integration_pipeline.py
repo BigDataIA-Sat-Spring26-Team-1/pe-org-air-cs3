@@ -71,12 +71,25 @@ class IntegrationPipeline:
         
         # Persist base state to DB (e.g., creating a draft assessment)
         # For now, we'll return this context to be passed to next tasks via XCom
+        # Fetch industry to get correct HR base
+        industry = None
+        if company.get('industry_id'):
+            # Fetch industry data based on company's industry_id
+            query = "SELECT * FROM industries WHERE id = %s"
+            ind_record = await db.fetch_one(query, (company['industry_id'],))
+            if ind_record:
+                industry = ind_record
+
+        hr_base = float(industry.get('h_r_base', 70.0)) if industry else 70.0
+        sector = industry.get('sector', 'default') if industry else company.get('sector', 'default')
+
         return {
             "ticker": ticker,
             "company_id": company_id,
             "assessment_id": assessment_id,
             "base_scores": {k: float(v) for k, v in base_scores.items()},
-            "sector": company.get('sector', 'default'),
+            "sector": sector,
+            "hr_base": hr_base,
             "position_factor": float(company.get('position_factor', 0.5))
         }
 
@@ -242,7 +255,8 @@ class IntegrationPipeline:
             dimension_inputs[d] = scores.get(d, Decimal("50.0"))
 
         hr_modifier = Decimal(str(talent_results.get("hr_modifier", 1.0)))
-        hr_base_adjusted = Decimal("70.0") * hr_modifier
+        base_hr_val = str(context.get("hr_base", 70.0))
+        hr_base_adjusted = Decimal(base_hr_val) * hr_modifier
         
         position_factor = Decimal(str(context.get('position_factor', 0.5)))
         sector = context.get('sector', 'default')
@@ -299,7 +313,10 @@ class IntegrationPipeline:
         return {
             "ticker": ticker,
             "final_score": final_org_air,
-            "assessment_id": assessment_id
+            "assessment_id": assessment_id,
+            "company_id": company_id,
+            "scores": dimension_inputs,
+            "signals_added": 0
         }
 
     async def _save_signal(self, company_id: str, category: str, source: str, score: Decimal, confidence: Decimal, rationale: str, metadata: dict):

@@ -154,3 +154,50 @@ async def get_document_chunks(
     cache.set_list(cache_key, results, ttl_seconds=300)
     
     return results
+
+import httpx
+
+class AirflowTriggerResponse(BaseModel):
+    status: str
+    dag_run_id: Optional[str] = None
+    error: Optional[str] = None
+
+@router.post("/collect-airflow", response_model=AirflowTriggerResponse)
+async def collect_documents_airflow(req: SecCollectRequest = None):
+    """
+    Trigger the Airflow sec_filing_ingestion DAG.
+    """
+    logger.info("Triggering Airflow SEC Ingestion Pipeline")
+    
+    airflow_url = "http://airflow-webserver:8080/api/v1/dags/sec_filing_ingestion/dagRuns"
+    auth = ("airflow", "airflow")
+    run_id = f"manual_api_trigger_sec_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    
+    payload = {"dag_run_id": run_id}
+    
+    # If the SEC dag is ever updated to accept conf.tickers, you could do:
+    # if req and req.tickers:
+    #     payload["conf"] = {"tickers": req.tickers}
+
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.post(airflow_url, json=payload, auth=auth, timeout=10.0)
+            if res.status_code in [200, 201]:
+                data = res.json()
+                return AirflowTriggerResponse(
+                    status="success",
+                    dag_run_id=data.get("dag_run_id")
+                )
+            else:
+                error_msg = f"Airflow responded with status {res.status_code}: {res.text}"
+                logger.error(f"Failed to trigger SEC Airflow: {error_msg}")
+                return AirflowTriggerResponse(
+                    status="failed",
+                    error=error_msg
+                )
+        except Exception as e:
+            logger.error(f"Airflow trigger error for SEC: {str(e)}")
+            return AirflowTriggerResponse(
+                status="failed",
+                error=str(e)
+            )

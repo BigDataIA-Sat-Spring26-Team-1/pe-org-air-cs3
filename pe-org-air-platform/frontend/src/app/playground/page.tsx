@@ -64,6 +64,7 @@ const CATEGORIES: any[] = [
         icon: <FileText size={16} />,
         endpoints: [
             { tag: "Documents", name: "Collect Filings", method: 'POST', path: '/api/v1/documents/collect', description: "Trigger SEC scraper", body: { tickers: ["CAT"], limit: 2 } },
+            { tag: "Documents", name: "Deploy Airflow DAG", method: 'POST', path: '/api/v1/documents/collect-airflow', description: "Trigger SEC Airflow DAG", body: { tickers: ["CAT"], limit: 2 } },
             {
                 tag: "Documents",
                 name: "Search Documents",
@@ -134,6 +135,16 @@ const CATEGORIES: any[] = [
                 method: 'POST',
                 path: '/api/v1/integration/run',
                 description: "Force real-time deep scoring for one or more tickers (Board + SEC + Talent + Culture)",
+                body: {
+                    tickers: ["NVDA", "JPM", "GE"]
+                }
+            },
+            {
+                tag: "Integration",
+                name: "Deploy Airflow DAG",
+                method: 'POST',
+                path: '/api/v1/integration/run-airflow',
+                description: "Trigger the Airflow Integration Pipeline DAG",
                 body: {
                     tickers: ["NVDA", "JPM", "GE"]
                 }
