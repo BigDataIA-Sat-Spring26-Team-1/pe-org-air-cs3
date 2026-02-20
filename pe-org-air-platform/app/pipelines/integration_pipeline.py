@@ -190,7 +190,7 @@ class IntegrationPipeline:
             hr_base=hr_base_adjusted,
             sector=sector,
             company_id=company_id,
-            alpha=Decimal("0.68"), # V^R vs H^R within 88%
+            alpha=Decimal("0.60"), # V^R vs H^R within 88%
             beta=Decimal("0.12")   # Synergy weight
         )
         

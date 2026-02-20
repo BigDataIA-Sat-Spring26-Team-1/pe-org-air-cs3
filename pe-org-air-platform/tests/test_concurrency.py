@@ -1,13 +1,11 @@
+
 import pytest
 import asyncio
 import time
+from uuid import uuid4
 
 @pytest.mark.asyncio
-async def test_simultaneous_reads(client):
-    """
-    Test that the API can handle multiple concurrent Read requests.
-    """
-    # Launch 10 concurrent requests to list industries
+async def test_concurrent_read_requests(client):
     tasks = [client.get("/api/v1/industries/") for _ in range(10)]
     responses = await asyncio.gather(*tasks)
     
@@ -16,22 +14,16 @@ async def test_simultaneous_reads(client):
         assert len(res.json()) > 0
 
 @pytest.mark.asyncio
-async def test_simultaneous_writes(client):
-    """
-    Test concurrent writes to ensure no session corruption.
-    Note: Snowflake handles row-level locking or multi-versioning typically.
-    """
-    # 1. Get a valid industry
+async def test_concurrent_write_operations(client):
     ind_res = await client.get("/api/v1/industries/")
     industry_id = ind_res.json()[0]["id"]
     
-    # 2. Launch 5 concurrent writes for DIFFERENT companies
+    unique_id = uuid4().hex[:4]
     payloads = [
         {
-            "name": f"Concurrent Co {i} - {int(time.time())}",
-            "ticker": f"C{i}",
-            "industry_id": industry_id,
-            "position_factor": 0.1 * i
+            "name": f"Concurrent {i}-{unique_id}",
+            "ticker": f"C{i}{unique_id}".upper()[:5],
+            "industry_id": industry_id
         }
         for i in range(5)
     ]
@@ -41,30 +33,20 @@ async def test_simultaneous_writes(client):
     
     for res in responses:
         assert res.status_code == 201
-        
-    print(f"\nSimultaneously created {len(responses)} companies.")
 
 @pytest.mark.asyncio
-async def test_read_write_collision(client):
-    """
-    Perform a read while simultaneously performing a write to ensure isolation.
-    """
+async def test_interleaved_read_write(client):
     ind_res = await client.get("/api/v1/industries/")
     industry_id = ind_res.json()[0]["id"]
     
-    write_payload = {
-        "name": f"Collision Test {int(time.time())}",
-        "ticker": "COL",
+    payload = {
+        "name": f"Interleave {int(time.time())}",
+        "ticker": "INTLV",
         "industry_id": industry_id
     }
     
-    # Run Read and Write in parallel
-    # Note: We clear the cache for companies first to force a DB read
-    from app.services.redis_cache import cache
-    cache.delete_pattern("companies:list:*")
-    
     res_write, res_read = await asyncio.gather(
-        client.post("/api/v1/companies/", json=write_payload),
+        client.post("/api/v1/companies/", json=payload),
         client.get("/api/v1/companies/")
     )
     

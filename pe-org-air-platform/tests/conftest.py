@@ -8,6 +8,7 @@ TIMEOUT = 30.0  # Increased timeout for Snowflake connection delays
 
 @pytest_asyncio.fixture
 async def client():
-    """Provide an async HTTP client with extended timeout for integration tests."""
-    async with httpx.AsyncClient(base_url=BASE_URL, timeout=TIMEOUT) as client:
+    """Provide an async HTTP client hitting the app directly for coverage tracking."""
+    from app.main import app
+    async with httpx.AsyncClient(app=app, base_url="http://test") as client:
         yield client

@@ -324,11 +324,12 @@ class RubricScorer:
                 keyword_density = len(matches) / max(len(criteria.keywords), 1)
                 range_size = criteria.level.max_score - criteria.level.min_score
                 score = criteria.level.min_score + (keyword_density * range_size)
+                score = max(Decimal("10.0"), Decimal(str(round(score, 2))))
                 
                 return RubricResult(
                     dimension=dimension,
                     level=level,
-                    score=Decimal(str(round(score, 2))),
+                    score=score,
                     matched_keywords=matches,
                     keyword_match_count=len(matches),
                     confidence=Decimal(str(min(0.9, 0.5 + keyword_density * 0.4))),

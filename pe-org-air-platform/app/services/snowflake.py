@@ -229,6 +229,11 @@ class SnowflakeService:
         query = "SELECT * FROM industries WHERE name = %s LIMIT 1"
         return await self.fetch_one(query, (name,))
 
+    async def create_industry(self, industry: Dict[str, Any]) -> None:
+        query = "INSERT INTO industries (id, name, sector, h_r_base) VALUES (%s, %s, %s, %s)"
+        params = (str(industry['id']), industry['name'], industry.get('sector', 'Other'), industry.get('h_r_base', 70.0))
+        await self.execute(query, params)
+
     # Companies
     async def fetch_company(self, company_id: str) -> Optional[Dict[str, Any]]:
         query = "SELECT * FROM companies WHERE id = %s AND is_deleted = FALSE"
