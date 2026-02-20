@@ -11,7 +11,9 @@ from airflow.models import DagBag
 logger = structlog.get_logger()
 
 def verify_dag():
-    dag_bag = DagBag(dag_folder='dags', include_examples=False)
+    # Updated to verify against the correct DAGs folder location relative to this script
+    dags_folder = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../pe-org-air-platform/dags'))
+    dag_bag = DagBag(dag_folder=dags_folder, include_examples=False)
     
     if 'integration_pipeline' not in dag_bag.dags:
         print("❌ DAG 'integration_pipeline' not found in DagBag.")
