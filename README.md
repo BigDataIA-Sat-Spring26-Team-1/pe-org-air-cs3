@@ -394,4 +394,4 @@ The test suite is designed to be run as part of a CI/CD pipeline, ensuring that 
 | :--- | :--- |
 | **Aakash** | Base API (Models, Routers, Redis Caching), Signals Pipeline, Frontend (Tutorial, Playground), Talent Analyzer, Calculators, Deployment|
 | **Rahul** | Base API (Models, Router, Schemas, AWS), SEC EDGAR Pipeline and Optimization, Frontend (Dashboards), Position Factor, Board Analyzer |
-| **Abhinav** | Base API (Models, Routers, Docker, Snowflake), SEC EDGAR Pipeline and Optimization, Documentation, Frontend (Playground), Glassdoor culture, Airflow,|
+| **Abhinav** | Base API (Models, Routers, Docker, Snowflake), SEC EDGAR Pipeline and Optimization, Documentation, Frontend (Playground), Glassdoor culture, Airflow implementation|
