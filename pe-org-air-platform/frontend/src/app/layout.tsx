@@ -50,7 +50,7 @@ export default function RootLayout({
                 <span>Documentation</span>
               </Link>
               <a
-                href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/docs`}
+                href={`${process.env.NEXT_PUBLIC_API_URL || ''}/docs`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 text-slate-400 hover:text-slate-100 hover:bg-white/5"

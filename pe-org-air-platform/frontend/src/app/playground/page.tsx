@@ -231,7 +231,7 @@ export default function Playground() {
     const [expandedTags, setExpandedTags] = useState<string[]>(["Companies", "Documents"]);
     const [validationError, setValidationError] = useState<string | null>(null);
 
-    const API_BASE = (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) || "http://localhost:8000";
+    const API_BASE = (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) || "";
 
     // Initialize state when endpoint changes
     useEffect(() => {
