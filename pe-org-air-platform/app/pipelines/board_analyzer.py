@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import List, Tuple
 from app.models.board import BoardMember, GovernanceSignal
 from bs4 import BeautifulSoup
+from app.config import settings
 
 
 class BoardCompositionAnalyzer:
@@ -92,7 +93,6 @@ class BoardCompositionAnalyzer:
         r'\binformation\s+technology\b',
     ]
 
-    SEC_API_KEY = "0c6b6b0df58cba77bb714d703df6468482e29b67b343728ce00048f3eac7390c"
     SEC_ENDPOINT = "https://api.sec-api.io/directors-and-board-members"
 
     def __init__(self):
@@ -258,7 +258,7 @@ class BoardCompositionAnalyzer:
         }
 
         headers = {
-            "Authorization": self.SEC_API_KEY,
+            "Authorization": settings.SEC_API_KEY.get_secret_value() if settings.SEC_API_KEY else "",
             "Content-Type": "application/json"
         }
 
