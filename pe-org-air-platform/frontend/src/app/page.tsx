@@ -41,7 +41,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [backfilling, setBackfilling] = useState(false);
 
-  const API_BASE = (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) || "http://localhost:8000";
+  const API_BASE = (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL) || "";
 
   useEffect(() => {
     async function fetchData() {

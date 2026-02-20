@@ -28,7 +28,7 @@ export default function CollectionPage() {
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     const [stats, setStats] = useState<any>(null);
 
-    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
     useEffect(() => {
         const fetchStats = async () => {
