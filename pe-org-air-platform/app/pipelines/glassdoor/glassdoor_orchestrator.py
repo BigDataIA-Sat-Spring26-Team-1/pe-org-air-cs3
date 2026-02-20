@@ -118,11 +118,21 @@ class GlassdoorOrchestrator:
         if not parsed_reviews:
             logger.info(f"No reviews found for {ticker}")
             return {"reviews": 0, "signals": 0}
+
+        company_id = parsed_reviews[0].company_id if parsed_reviews else None
             
-        # 2. Snowflake
+        # 2. Save raw reviews to Snowflake
         await self.save_reviews_to_snowflake(parsed_reviews)
+
+        # 3. Analyze and compute aggregated culture signal → write to culture_scores
+        culture_signal = None
+        if company_id:
+            culture_signal = self.collector.analyze_reviews(company_id, ticker, parsed_reviews)
+            if culture_signal:
+                await self.save_culture_signal(culture_signal)
+                logger.info(f"Culture signal saved for {ticker}")
         
-        return {"reviews": len(parsed_reviews), "signals": 0}
+        return {"reviews": len(parsed_reviews), "signals": 1 if culture_signal else 0}
 
     async def run_batch(self, companies: List[Dict[str, str]], limit: int = 20, force_refresh: bool = False):
         """

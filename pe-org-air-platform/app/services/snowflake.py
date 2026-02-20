@@ -229,6 +229,11 @@ class SnowflakeService:
         query = "SELECT * FROM industries WHERE name = %s LIMIT 1"
         return await self.fetch_one(query, (name,))
 
+    async def create_industry(self, industry: Dict[str, Any]) -> None:
+        query = "INSERT INTO industries (id, name, sector, h_r_base) VALUES (%s, %s, %s, %s)"
+        params = (str(industry['id']), industry['name'], industry.get('sector', 'Other'), industry.get('h_r_base', 70.0))
+        await self.execute(query, params)
+
     # Companies
     async def fetch_company(self, company_id: str) -> Optional[Dict[str, Any]]:
         query = "SELECT * FROM companies WHERE id = %s AND is_deleted = FALSE"
@@ -569,12 +574,12 @@ class SnowflakeService:
         return [{"title": row.get('title', ''), "description": row['description']} for row in rows]
 
     async def fetch_glassdoor_reviews_for_talent(self, company_id: str, limit: int = 1000) -> List[Dict[str, Any]]:
-        """Fetch Glassdoor reviews (titles and text) for key-person risk analysis."""
+        """Fetch Glassdoor reviews for culture/talent analysis."""
         query = """
-            SELECT title, description as review_text, metadata
-            FROM signal_evidence 
+            SELECT title, pros as review_text, NULL as metadata
+            FROM glassdoor_reviews 
             WHERE company_id = %s 
-            AND source = 'glassdoor'
+            ORDER BY review_date DESC
             LIMIT %s
         """
         return await self.fetch_all(query, (company_id, limit))

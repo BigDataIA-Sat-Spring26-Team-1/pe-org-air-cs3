@@ -8,10 +8,10 @@ DIMENSION_WEIGHTS = {
     Dimension.DATA_INFRASTRUCTURE: 0.25,
     Dimension.AI_GOVERNANCE: 0.20,
     Dimension.TECHNOLOGY_STACK: 0.15,
-    Dimension.TALENT_SKILLS: 0.15,
-    Dimension.LEADERSHIP_VISION: 0.10,
+    Dimension.TALENT: 0.15,
+    Dimension.LEADERSHIP: 0.10,
     Dimension.USE_CASE_PORTFOLIO: 0.10,
-    Dimension.CULTURE_CHANGE: 0.05
+    Dimension.CULTURE: 0.05
 }
 
 class DimensionScoreBase(BaseModel):

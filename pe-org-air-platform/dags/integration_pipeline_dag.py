@@ -27,7 +27,7 @@ with DAG(
     "integration_pipeline",
     default_args=default_args,
     description="Orchestrates the full PE Org-AI-R Integration Pipeline",
-    schedule_interval="@daily",
+    schedule_interval=None,
     start_date=datetime(2024, 1, 1),
     catchup=False,
     tags=["integration", "scoring", "core"],
